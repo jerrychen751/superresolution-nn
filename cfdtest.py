@@ -195,7 +195,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.01)
 # ------------------------
 # Training loop
 # ------------------------
-epochs = 400
+epochs = 500
 for epoch in range(epochs):
     optimizer.zero_grad()
     output = model(inputs)
