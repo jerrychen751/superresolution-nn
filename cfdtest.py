@@ -158,7 +158,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Generate training data (2D function)
 # ------------------------
 # Example: u(x,y) = sin(pi*x) * sin(pi*y)
-nx, ny = 50, 50
+nx, ny = 75, 75
 x = torch.linspace(0, 1, nx)
 y = torch.linspace(0, 1, ny)
 X, Y = torch.meshgrid(x, y, indexing="ij")
@@ -195,7 +195,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.01)
 # ------------------------
 # Training loop
 # ------------------------
-epochs = 500
+epochs = 400
 for epoch in range(epochs):
     optimizer.zero_grad()
     output = model(inputs)
@@ -203,7 +203,7 @@ for epoch in range(epochs):
     loss.backward()
     optimizer.step()
     
-    if epoch % 50 == 0:
+    if epoch % 25 == 0:
         print(f"Epoch {epoch}, Loss: {loss.item():.6f}")
 
 # ------------------------
@@ -214,7 +214,7 @@ u_pred = model(inputs).detach().cpu().reshape(nx, ny)
 # ------------------------
 # Plot results
 # ------------------------
-plt.figure(figsize=(12,5))
+plt.figure(figsize=(8,4.5))
 plt.subplot(1,2,1)
 plt.title("True Function")
 plt.imshow(u_true, origin="lower", extent=[0,1,0,1], cmap="viridis")
