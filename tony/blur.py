@@ -3,33 +3,45 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # -------------------------
-# 1. Load image (grayscale)
+# 1. Load image
 # -------------------------
-name = "test.jpg"  # Change this to the image you want to test
+name = "buzz_real.jpg"  # Change this to the image you want to test
 
-img = cv2.imread("tony/" + name, 0)
+# Use cv2.IMREAD_COLOR_RGB for color images, cv2.IMREAD_GRAYSCALE for grayscale images
+img = cv2.imread("tony/images/" + name, cv2.IMREAD_COLOR_RGB)
 
-# Resize to 128x128
-img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_AREA)
 
-# Convert to float for better math
+img_size = 512    # Change this to the desired size (e.g., 128, 256, 512)
+img = cv2.resize(img, (img_size, img_size), interpolation=cv2.INTER_AREA)
+
+# Convert to float32 and normalize to [0, 1]
 img = img.astype(np.float32) / 255.0
+
+# if color, img now is a 3-channel color 2-D image (H, W, 3) with values in [0, 1].
+# if grayscale, img is a 2-D image (H, W) with values in [0, 1].
 
 # -------------------------
 # 2. Apply Gaussian blur
 # -------------------------
-gaussian = cv2.GaussianBlur(img, (11, 11), sigmaX=3)
+gaussian_kernel_size = 31  # Change this to larger number for a stronger blur effect (should be odd, e.g., 3, 5, 7, ..., 31)
+sigma = 5  # Standard deviation for Gaussian kernel
+gaussian = cv2.GaussianBlur(img, (gaussian_kernel_size, gaussian_kernel_size), sigmaX=sigma)
 
 # -------------------------
 # 3. Apply Box blur
 # -------------------------
-box = cv2.blur(img, (11, 11))
+# Change the kernel size to larger number for a stronger blur effect
+box_kernel_size = 31
+box = cv2.blur(img, (box_kernel_size, box_kernel_size))
 
 # -------------------------
 # 4. Compute residuals
 # -------------------------
 res_gaussian = img - gaussian
 res_box = img - box
+box_gaussian_diff = box - gaussian
+print("Box - Gaussian difference (mean absolute value):", np.mean(np.abs(box_gaussian_diff)))
+print("Max absolute value in Box - Gaussian difference:", np.max(np.abs(box_gaussian_diff)))
 
 # -------------------------
 # 5. Visualization
@@ -42,25 +54,29 @@ plt.imshow(img, cmap='gray')
 plt.colorbar()
 
 plt.subplot(2,3,2)
-plt.title("Gaussian Blur")
+plt.title("Gaussian: kernel size = {}, sigma = {}".format(gaussian_kernel_size, sigma), fontsize=10)
 plt.imshow(gaussian, cmap='gray')
 plt.colorbar()
 
 plt.subplot(2,3,3)
-plt.title("Box Blur")
+plt.title("Box: kernel size = {}".format(box_kernel_size), fontsize=10)
 plt.imshow(box, cmap='gray')
 plt.colorbar()
 
 plt.subplot(2,3,4)
-plt.title("Residual (Gaussian)")
+plt.title("Residual (Original - Gaussian)")
 plt.imshow(res_gaussian, cmap='seismic')
 plt.colorbar()
 
 plt.subplot(2,3,5)
-plt.title("Residual (Box)")
+plt.title("Residual (Original - Box)")
 plt.imshow(res_box, cmap='seismic')
+plt.colorbar()
+
+plt.subplot(2,3,6)
+plt.title("Difference (Box - Gaussian)")
+plt.imshow(box_gaussian_diff, cmap='seismic')
 plt.colorbar()
 
 plt.tight_layout()
 plt.show()
-
