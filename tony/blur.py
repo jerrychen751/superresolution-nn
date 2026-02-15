@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 # -------------------------
 # 1. Load image
 # -------------------------
-name = "buzz_real.jpg"  # Change this to the image you want to test
+name = "tech_tower.jpg"  # Change this to the image you want to test
 
 # Use cv2.IMREAD_COLOR_RGB for color images, cv2.IMREAD_GRAYSCALE for grayscale images
-img = cv2.imread("tony/images/" + name, cv2.IMREAD_COLOR_RGB)
+img = cv2.imread("tony/images/" + name, cv2.IMREAD_GRAYSCALE)
 
 
-img_size = 512    # Change this to the desired size (e.g., 128, 256, 512)
+img_size = 1024    # Change this to the desired size (e.g., 128, 256, 512)
 img = cv2.resize(img, (img_size, img_size), interpolation=cv2.INTER_AREA)
 
 # Convert to float32 and normalize to [0, 1]
@@ -40,8 +40,6 @@ box = cv2.blur(img, (box_kernel_size, box_kernel_size))
 res_gaussian = img - gaussian
 res_box = img - box
 box_gaussian_diff = box - gaussian
-print("Box - Gaussian difference (mean absolute value):", np.mean(np.abs(box_gaussian_diff)))
-print("Max absolute value in Box - Gaussian difference:", np.max(np.abs(box_gaussian_diff)))
 
 # -------------------------
 # 5. Visualization
