@@ -6,3 +6,9 @@ Procedure:
 3. Downsample the blurred data. Steps 2 + 3 are data preparation steps to obtain an input for the model from the super-fine DNS to generate synthetic coarse data.
 4. model(u_blurred) -> du, dv, dw (correction terms for velocity components)
 5. u_corrected = u_blurred + u_model (predict correction terms only for coarse points)
+
+Running the code:
+1. Obtain the ground truth data from JHU Turbulence DB (run download_data.py).
+2. Preprocess the data (generate Gaussian filter and then create model training inputs as well as true label values).
+3. Run train.py to train and evaluate model.
+

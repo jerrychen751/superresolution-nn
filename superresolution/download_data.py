@@ -1,8 +1,5 @@
 """
 Download 3D velocity cubes from the JHU Turbulence Database.
-
-Usage:
-    python -m superresolution.download_data
 """
 
 from collections.abc import Iterable
@@ -71,7 +68,7 @@ def download_cubes(time_steps: Iterable[int], cube_size: int = 32) -> None:
             continue
 
         print(f"[download] time step {t}...", end=" ", flush=True)
-        velocity = get_velocity_cube(conn, t, cube_size=cube_size)
+        velocity = get_velocity_cube(conn, t, cube_size=cube_size) # (nz, ny, nx, 3)
         np.save(out_path, velocity)
         print(f"saved {out_path}  shape={velocity.shape}")
 

@@ -13,8 +13,8 @@ import numpy as np
 from scipy.ndimage import gaussian_filter, zoom
 
 # Configuration
-RAW_DIR = Path("data/raw")
-PROCESSED_DIR = Path("data/processed")
+RAW_DIR = Path(__file__).resolve().parent / "data" / "raw"
+PROCESSED_DIR = Path(__file__).resolve().parent / "data" / "processed"
 
 
 # Individual transforms
