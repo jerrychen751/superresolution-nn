@@ -129,6 +129,7 @@ def train_eval(cfg: SuperResolutionConfig):
         test_loss = 0.0
         with torch.no_grad():
             for inputs, targets in test_loader:
+                inputs, targets = inputs.to(device), targets.to(device)
                 loss = criterion(model(inputs), targets)
                 test_loss += loss.item() * inputs.size(0)
         
