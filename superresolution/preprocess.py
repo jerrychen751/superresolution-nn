@@ -120,6 +120,19 @@ def prepare_dataset(cfg: SuperResolutionConfig):
 
     print(f"Found {len(raw_files)} raw cubes")
 
+    # Check if all processed outputs already exist
+    expected = []
+    for fp in raw_files:
+        t_str = fp.stem.split("_t")[1]
+        expected.append(processed_dir / f"input_t{t_str}.npy")
+        expected.append(processed_dir / f"target_t{t_str}.npy")
+    expected.append(processed_dir / "input_stats.npz")
+    expected.append(processed_dir / "target_stats.npz")
+
+    if all(p.exists() for p in expected):
+        print("All processed files already exist, skipping preprocessing.")
+        return
+
     # Pass 1: build pairs
     inputs = []
     targets = []
@@ -149,17 +162,23 @@ def prepare_dataset(cfg: SuperResolutionConfig):
     target_stats = NormalizationStats()
     target_stats.fit(targets)
 
-    print(f"Input  stats — mean: {input_stats.mean}, std: {input_stats.std}")
+    print(f"Input stats — mean: {input_stats.mean}, std: {input_stats.std}")
     print(f"Target stats — mean: {target_stats.mean}, std: {target_stats.std}")
 
     for i, t_str in enumerate(time_labels):
         inp_norm = input_stats.normalize(inputs[i])
         tgt_norm = target_stats.normalize(targets[i])
-        np.save(processed_dir / f"input_t{t_str}.npy", inp_norm)
-        np.save(processed_dir / f"target_t{t_str}.npy", tgt_norm)
+        for name, arr in [("input", inp_norm), ("target", tgt_norm)]:
+            out = processed_dir / f"{name}_t{t_str}.npy"
+            tmp = out.with_suffix(".npy.tmp")
+            np.save(tmp, arr)
+            tmp.rename(out)
 
-    input_stats.save(processed_dir / "input_stats.npz")
-    target_stats.save(processed_dir / "target_stats.npz")
+    for name, stats in [("input_stats", input_stats), ("target_stats", target_stats)]:
+        out = processed_dir / f"{name}.npz"
+        tmp = out.with_suffix(".npz.tmp")
+        stats.save(tmp)
+        tmp.rename(out)
     print(f"Saved {len(time_labels)} pairs + stats to {processed_dir}")
 
 
