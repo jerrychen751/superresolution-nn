@@ -10,13 +10,14 @@ name = "buzz_real.jpg"  # Change this to the image you want to test
 # Use cv2.IMREAD_COLOR_RGB for color images, cv2.IMREAD_GRAYSCALE for grayscale images
 img = cv2.imread("tony/images/" + name, cv2.IMREAD_GRAYSCALE)
 
-n = 64    # Change this to the desired size (e.g., 128, 256, 512)
+n = 64    # Change this to the desired size (e.g., 49, 64, 81, 100)
 img = cv2.resize(img, (n, n), interpolation=cv2.INTER_AREA)
 
 # Flattened size
 N = n * n
 kernel_size = 7
 pad = kernel_size // 2
+box_size = kernel_size ** 2
 
 # ----------------------------
 # Build blur matrix A
@@ -38,7 +39,7 @@ for i in range(n):
                 
                 if 0 <= ni < n and 0 <= nj < n:
                     col = index(ni, nj)
-                    A[row, col] += 1.0 / (kernel_size ** 2)
+                    A[row, col] += 1.0 / box_size
 
 # ----------------------------
 # Forward blur
