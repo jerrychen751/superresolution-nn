@@ -1,0 +1,11 @@
+defaults:
+  - download: default
+  - preprocess: default
+  - train: default
+  # _self_ controls where this file's own keys (below) sit in the merge order.
+  # Placing it last means our top-level keys take priority over group defaults on conflict.
+  - _self_
+
+# If these are invalid values, default to local values specified in the code
+raw_data_dir: null
+processed_data_dir: null
