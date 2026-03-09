@@ -12,14 +12,17 @@ from pathlib import Path
 import numpy as np
 from scipy.ndimage import gaussian_filter, zoom
 
-# Configuration
-RAW_DIR = Path(__file__).resolve().parent / "data" / "raw"
-PROCESSED_DIR = Path(__file__).resolve().parent / "data" / "processed"
+import hydra
+from hydra.core.config_store import ConfigStore
+from .config import SuperResolutionConfig
+
+cs = ConfigStore.instance()
+cs.store(name="config", node=SuperResolutionConfig)
 
 
 # Individual transforms
 
-def apply_gaussian_filter(velocity, sigma=1.0):
+def apply_gaussian_filter(velocity: np.ndarray, sigma: float):
     """
     Artificially blur the DNS data to generate model input. Uses a weighted sum of a kernel at each point where weights are generated from Gaussian PDF.
     
@@ -37,21 +40,23 @@ def apply_gaussian_filter(velocity, sigma=1.0):
     return filtered
 
 
-def make_training_pair(dns_velocity, ds_step: int = 2):
+def make_training_pair(dns_velocity: np.ndarray, sigma: float, ds_step: int, spline_order: int):
     """
     Creates a pair of (input_features, expected_output) for the training of the model.
 
     Args:
         dns_velocity (nx, ny, nz, 3): Fine resolution simulation velocity flow field.
-        ds_step (int): Step size to use when downsampling after Gaussian blur.
+        sigma: Standard deviation of Gaussian filter.
+        ds_step: Step size to use when downsampling after Gaussian blur.
+        spline_order: Order of spline interpolation used when upsampling.
     """
     # The blur alone is not enough (just smears the data; no loss)
     # That's why downsampling must occur afterward
-    blurred = apply_gaussian_filter(dns_velocity, sigma=1.0)
+    blurred = apply_gaussian_filter(dns_velocity, sigma=sigma)
     coarse_blurred = blurred[::ds_step, ::ds_step, ::ds_step, :]
 
-    # Upsample to interpolate the 
-    coarse_upsampled = zoom(coarse_blurred, (ds_step, ds_step, ds_step, 1), order=3, mode="wrap")
+    # Upsample to interpolate back to original resolution
+    coarse_upsampled = zoom(coarse_blurred, (ds_step, ds_step, ds_step, 1), order=spline_order, mode="wrap")
     correction = dns_velocity - coarse_upsampled
     return coarse_upsampled, correction
 
@@ -94,17 +99,39 @@ class NormalizationStats:
 
 
 # Full preprocessing pipeline
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def prepare_dataset(cfg: SuperResolutionConfig):
+    # Resolve data directories
+    if cfg.raw_data_dir:
+        raw_dir = Path(cfg.raw_data_dir)
+    else:
+        raw_dir = Path(__file__).resolve().parent / "data" / "raw"
 
-def prepare_dataset(raw_dir=RAW_DIR, processed_dir=PROCESSED_DIR):
-    processed_dir = Path(processed_dir)
+    if cfg.processed_data_dir:
+        processed_dir = Path(cfg.processed_data_dir)
+    else:
+        processed_dir = Path(__file__).resolve().parent / "data" / "processed"
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    raw_files = sorted(Path(raw_dir).glob("velocity_t*.npy"))
+    raw_files = sorted(raw_dir.glob("velocity_t*.npy"))
     if not raw_files:
         print(f"No raw files found in {raw_dir}")
         return
 
     print(f"Found {len(raw_files)} raw cubes")
+
+    # Check if all processed outputs already exist
+    expected = []
+    for fp in raw_files:
+        t_str = fp.stem.split("_t")[1]
+        expected.append(processed_dir / f"input_t{t_str}.npy")
+        expected.append(processed_dir / f"target_t{t_str}.npy")
+    expected.append(processed_dir / "input_stats.npz")
+    expected.append(processed_dir / "target_stats.npz")
+
+    if all(p.exists() for p in expected):
+        print("All processed files already exist, skipping preprocessing.")
+        return
 
     # Pass 1: build pairs
     inputs = []
@@ -117,7 +144,12 @@ def prepare_dataset(raw_dir=RAW_DIR, processed_dir=PROCESSED_DIR):
 
         print(f"[preprocess] {fp.name}...", end=" ", flush=True)
         fine = np.load(fp).astype(np.float32)
-        coarse_up, correction = make_training_pair(fine)
+        coarse_up, correction = make_training_pair(
+            fine,
+            sigma=cfg.preprocess.sigma,
+            ds_step=cfg.preprocess.downsample_step,
+            spline_order=cfg.preprocess.spline_interpolation_order,
+        )
         inputs.append(coarse_up)
         targets.append(correction)
         print(
@@ -130,17 +162,23 @@ def prepare_dataset(raw_dir=RAW_DIR, processed_dir=PROCESSED_DIR):
     target_stats = NormalizationStats()
     target_stats.fit(targets)
 
-    print(f"Input  stats — mean: {input_stats.mean}, std: {input_stats.std}")
+    print(f"Input stats — mean: {input_stats.mean}, std: {input_stats.std}")
     print(f"Target stats — mean: {target_stats.mean}, std: {target_stats.std}")
 
     for i, t_str in enumerate(time_labels):
         inp_norm = input_stats.normalize(inputs[i])
         tgt_norm = target_stats.normalize(targets[i])
-        np.save(processed_dir / f"input_t{t_str}.npy", inp_norm)
-        np.save(processed_dir / f"target_t{t_str}.npy", tgt_norm)
+        for name, arr in [("input", inp_norm), ("target", tgt_norm)]:
+            out = processed_dir / f"{name}_t{t_str}.npy"
+            tmp = out.with_suffix(".npy.tmp")
+            np.save(tmp, arr)
+            tmp.rename(out)
 
-    input_stats.save(processed_dir / "input_stats.npz")
-    target_stats.save(processed_dir / "target_stats.npz")
+    for name, stats in [("input_stats", input_stats), ("target_stats", target_stats)]:
+        out = processed_dir / f"{name}.npz"
+        tmp = out.with_suffix(".npz.tmp")
+        stats.save(tmp)
+        tmp.rename(out)
     print(f"Saved {len(time_labels)} pairs + stats to {processed_dir}")
 
 
