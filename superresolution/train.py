@@ -2,10 +2,13 @@
 Containing training and evaluation code for the model. Parameters are stored at checkpoint intervals.
 """
 
+import os
 from pathlib import Path
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, DistributedSampler
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from .model import SuperResolutionCNN
 
@@ -15,6 +18,20 @@ from .config import SuperResolutionConfig
 
 cs = ConfigStore.instance()
 cs.store(name="config", node=SuperResolutionConfig)
+
+using_ddp = int(os.getenv("WORLD_SIZE", 1)) > 1
+if using_ddp:
+    dist.init_process_group("nccl")
+    world_size = dist.get_world_size() # n_nodes * n_procs per node
+    if not os.getenv("LOCAL_RANK"):
+        raise RuntimeError("Missing LOCAL_RANK env var, which is required for PyTorch DDP")
+    local_rank = int(os.getenv("LOCAL_RANK", 0))
+    device = torch.device(f"cuda:{local_rank}")
+else:
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
 
 class SuperResolutionDataset(Dataset):
     """
@@ -60,27 +77,48 @@ def train_eval(cfg: SuperResolutionConfig):
     test_ds = SuperResolutionDataset(input_fps[n_train:], target_fps[n_train:])
 
     # Wrap Datasets in DataLoader
-    train_loader = DataLoader(
-        dataset=train_ds,
-        batch_size=cfg.train.batch_size,
-        shuffle=True, # don't always pair up same samples
-        num_workers=cfg.train.num_workers,
-    )
-    test_loader = DataLoader(
-        dataset=test_ds,
-        batch_size=cfg.train.batch_size,
-        shuffle=False, # deterministic pairing
-        num_workers=cfg.train.num_workers,
-    )
-
-    # Device selection
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
+    if using_ddp:
+        # Sampler helps partition dataset into disjoint subsets for each process
+        train_sampler = DistributedSampler(
+            dataset=train_ds,
+            shuffle=True
+        )
+        train_loader = DataLoader(
+            dataset=train_ds,
+            batch_size=cfg.train.batch_size,
+            pin_memory=True,
+            num_workers=cfg.train.num_workers,
+            sampler=train_sampler # stores a reference
+        )
+        test_sampler = DistributedSampler(
+            dataset=test_ds,
+            shuffle=False
+        )
+        test_loader = DataLoader(
+            dataset=test_ds,
+            batch_size=cfg.train.batch_size,
+            pin_memory=True,
+            num_workers=cfg.train.num_workers,
+            sampler=test_sampler
+        )
     else:
-        device = torch.device('cpu')
+        train_loader = DataLoader(
+            dataset=train_ds,
+            batch_size=cfg.train.batch_size,
+            shuffle=True, # don't always pair up same samples
+            num_workers=cfg.train.num_workers,
+        )
+        test_loader = DataLoader(
+            dataset=test_ds,
+            batch_size=cfg.train.batch_size,
+            shuffle=False, # deterministic pairing
+            num_workers=cfg.train.num_workers,
+        )
 
     # Model instantiation
     model = SuperResolutionCNN().to(device)
+    if using_ddp:
+        model = DDP(model, device_ids=[local_rank])
 
     # Select optimizer
     optimizer = torch.optim.AdamW(
@@ -103,6 +141,10 @@ def train_eval(cfg: SuperResolutionConfig):
 
     # Training loop
     for epoch in range(cfg.train.epochs):
+        # Sampler uses current epoch as a seed for generating partitions
+        if using_ddp:
+            train_sampler.set_epoch(epoch)
+
         model.train()
         train_loss = 0.0 # average loss per epoch
         for inputs, targets in train_loader:
@@ -121,8 +163,13 @@ def train_eval(cfg: SuperResolutionConfig):
             # loss.item() returns average MSE over the batch
             # inputs.size(0) returns batch size
             train_loss += loss.item() * inputs.size(0)
-        
-        train_loss /= len(train_ds) # average over all training samples
+
+        if using_ddp:
+            local_train_loss = torch.tensor(train_loss, device=device)
+            dist.all_reduce(local_train_loss, op=dist.ReduceOp.SUM)
+            train_loss = local_train_loss.item() / len(train_ds)
+        else:
+            train_loss /= len(train_ds) # average over all training samples
 
         # Track validation/test loss
         model.eval()
@@ -133,16 +180,35 @@ def train_eval(cfg: SuperResolutionConfig):
                 loss = criterion(model(inputs), targets)
                 test_loss += loss.item() * inputs.size(0)
         
-        test_loss /= len(test_ds)
+        if using_ddp:
+            local_test_loss = torch.tensor(test_loss, device=device)
+            dist.all_reduce(local_test_loss, dist.ReduceOp.SUM)
+            test_loss = local_test_loss.item() / len(test_ds)
+        else:
+            test_loss /= len(test_ds)
 
-        # Track loss statistics for both training and test
-        # These should get written to a file later on, when moving to ICE
+        # Save the model at checkpoints, as well as loss stats
         if epoch % 50 == 0:
-            print(f"Training loss: {train_loss}")
-            print(f"Testing loss: {test_loss}")
+            if not using_ddp or dist.get_rank() == 0:
+                checkpoint = {
+                    "epoch": epoch,
+                    "model": model.module.state_dict() if using_ddp else model.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "lr_scheduler": scheduler.state_dict(),
+                    "train_loss": train_loss,
+                    "test_loss": test_loss
+                }
+                torch.save(checkpoint, f"checkpoint_epoch_{epoch}.pt")
+
+            if using_ddp:
+                # Block other processes until all reach this point; all ranks should hit this
+                dist.barrier()
+
             
         scheduler.step() # adjust LR before the next epoch
 
+    if using_ddp:
+        dist.destroy_process_group()
 
 if __name__ == '__main__':
     train_eval()
