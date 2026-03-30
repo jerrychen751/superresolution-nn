@@ -2,12 +2,10 @@
 
 #SBATCH --job-name=superres
 #SBATCH --partition=ice-gpu
-#SBATCH --qos=coe-ice
-#SBATCH --account=math                 # your PACE allocation; change if needed
-#SBATCH --nodes=8
+#SBATCH --nodes=1
 #SBATCH --gres=gpu:v100:2              # GPU type and count per node
 #SBATCH --ntasks-per-node=1            # Stays 1; torchrun spawns child processes equal to number of GPUs (tasks = GPU ct)
-#SBATCH --cpus-per-task=10              # nproc_per_node * (num_workers + 1)
+#SBATCH --cpus-per-task=5               # nproc_per_node * (num_workers + 1)
 #SBATCH --mem=32G
 #SBATCH --time=08:00:00                # wall-time limit
 #SBATCH --output=logs/%j.out           # stdout -> logs/<jobid>.out
@@ -17,10 +15,8 @@
 set -euo pipefail
 
 # Environment
-module purge
-module load miniforge/24.3.0-0
-eval "$(conda shell.bash hook)"
-conda activate ai
+source activate ai
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 
 # Diagnostics
 # $SLURM_JOB_ID is environment variable automatically set by SLURM
@@ -28,13 +24,14 @@ echo "Job $SLURM_JOB_ID started at $(date)"
 echo "Running on node: $(hostname)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
-# PACE ICE scratch (persistent, shared across nodes)
+# Code lives on NFS home; data lives on scratch (faster I/O)
+PROJECT_DIR=$HOME/projects/pi-cnn
 SCRATCH=/storage/ice1/3/9/jchen3421
 RAW_DIR=$SCRATCH/pi-cnn/data/raw
 PROCESSED_DIR=$SCRATCH/pi-cnn/data/processed
 
-# Navigate to project root (parent of superresolution/)
-cd $SLURM_SUBMIT_DIR/..
+# Navigate to project root (code)
+cd $PROJECT_DIR
 
 # Create data directories if they don't exist
 mkdir -p $RAW_DIR $PROCESSED_DIR
