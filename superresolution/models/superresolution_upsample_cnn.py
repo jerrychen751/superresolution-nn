@@ -1,9 +1,7 @@
 """
-3D CNN for turbulence super-resolution with spatial upsampling.
+Super-resolution CNN with spatial upsampling: coarse (e.g. 16^3) -> fine (e.g. 128^3).
 
-Takes coarse input (e.g., 16^3) and produces fine output (e.g., 128^3).
-Uses interpolate + conv (resize-conv) for upsampling to avoid
-checkerboard artifacts.
+Uses interpolate + conv (resize-conv) to avoid checkerboard artifacts from transposed convolutions.
 """
 
 import numpy as np
@@ -13,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-# ── Building blocks ──────────────────────────────────────────────
+# --- Building Blocks ---
 
 class CircularConv3d(nn.Module):
 
@@ -54,11 +52,7 @@ class ResBlock3d(nn.Module):
 
 class UpsampleStage(nn.Module):
     """
-    Trilinear interpolation (2x) followed by convolution.
-
-    Doubles spatial resolution while refining features. Using interpolation
-    before convolution avoids the checkerboard artifacts that transposed
-    convolutions can produce.
+    Trilinear interpolation (2x) followed by convolution. Doubles spatial resolution.
     """
 
     def __init__(self, channels: int) -> None:
@@ -73,15 +67,11 @@ class UpsampleStage(nn.Module):
         return x
 
 
-# ── Model ────────────────────────────────────────────────────────
+# --- Model ---
 
 class SuperResolutionUpsampleCNN(nn.Module):
     """
-    Input (batch, 3, D, H, W): coarse velocity field (e.g., 16^3).
-    Output (batch, 3, 8D, 8H, 8W): fine velocity field (e.g., 128^3).
-
-    Residual blocks extract features at coarse resolution, then three
-    upsample stages (each 2x) bring the output to 8x the input resolution.
+    Res blocks at coarse resolution, then num_upsample_stages interpolate+conv stages (each 2x) to reach fine resolution.
     """
 
     def __init__(
@@ -112,7 +102,7 @@ class SuperResolutionUpsampleCNN(nn.Module):
         return x
 
 
-# ── Preprocessing ────────────────────────────────────────────────
+# --- Preprocessing ---
 
 def make_training_pair(
     dns_velocity: np.ndarray,
@@ -121,10 +111,7 @@ def make_training_pair(
     **kwargs,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Gaussian blur -> stride-downsample. No upsampling.
-
-    Returns (coarse, dns_velocity) where coarse is at reduced resolution
-    and dns_velocity is the original full-resolution target.
+    Returns (coarse, dns_velocity). Gaussian blur then stride-downsample; target is original DNS.
     """
     from ..preprocess import apply_gaussian_filter
 

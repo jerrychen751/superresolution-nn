@@ -1,7 +1,6 @@
 """
-Existing 3D CNN for turbulence super-resolution.
+Super-resolution CNN: full-resolution input (128^3) -> correction at same resolution.
 
-Operates at full resolution: 128^3 input -> 128^3 correction output.
 u_corrected = coarse_upsampled + model(coarse_upsampled)
 """
 
@@ -12,7 +11,7 @@ import torch
 import torch.nn as nn
 
 
-# ── Building blocks ──────────────────────────────────────────────
+# --- Building Blocks ---
 
 class CircularConv3d(nn.Module):
 
@@ -51,14 +50,11 @@ class ResBlock3d(nn.Module):
         return self.relu(output)
 
 
-# ── Model ────────────────────────────────────────────────────────
+# --- Model ---
 
 class SuperResolutionCNN(nn.Module):
     """
-    Input (batch, 3, D, H, W): 3 channels of (u, v, w) velocity components.
-    Outputs: 3 channels of (du, dv, dw) correction terms.
-
-    Both input and output are at full resolution (e.g., 128^3).
+    Input and output both at full resolution. Predicts (du, dv, dw) correction terms.
     """
 
     def __init__(self, hidden_channels: int = 32, num_blocks: int = 4) -> None:
@@ -80,7 +76,7 @@ class SuperResolutionCNN(nn.Module):
         return x
 
 
-# ── Preprocessing ────────────────────────────────────────────────
+# --- Preprocessing ---
 
 def make_training_pair(
     dns_velocity: np.ndarray,
@@ -89,9 +85,7 @@ def make_training_pair(
     spline_order: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Gaussian blur -> stride-downsample -> spline upsample -> correction.
-
-    Returns (coarse_upsampled, correction), both at full DNS resolution.
+    Returns (coarse_upsampled, correction) both at full DNS resolution. Blur, downsample, spline upsample, then compute correction.
     """
     from ..preprocess import apply_gaussian_filter
 

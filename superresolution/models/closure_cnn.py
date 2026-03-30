@@ -1,9 +1,5 @@
 """
-3D CNN for turbulence closure modeling.
-
-Takes coarse velocity field (e.g., 16^3) and predicts a velocity correction
-at the same resolution. The correction makes the coarse field more accurate
-without increasing grid resolution.
+Closure CNN: coarse input -> velocity correction at same resolution.
 
 u_corrected = coarse + model(coarse)
 """
@@ -14,7 +10,7 @@ import torch
 import torch.nn as nn
 
 
-# ── Building blocks ──────────────────────────────────────────────
+# --- Building Blocks ---
 
 class CircularConv3d(nn.Module):
 
@@ -53,15 +49,11 @@ class ResBlock3d(nn.Module):
         return self.relu(output)
 
 
-# ── Model ────────────────────────────────────────────────────────
+# --- Model ---
 
 class ClosureCNN(nn.Module):
     """
-    Input (batch, 3, D, H, W): coarse velocity field (e.g., 16^3).
-    Output (batch, 3, D, H, W): velocity correction at same resolution.
-
-    Learns the difference between the volume-averaged DNS (truth at coarse
-    resolution) and the filtered+downsampled field (coarse simulation proxy).
+    Learns the difference between volume-averaged DNS (truth at coarse resolution) and the filtered+downsampled field.
     """
 
     def __init__(self, hidden_channels: int = 32, num_blocks: int = 4) -> None:
@@ -83,7 +75,7 @@ class ClosureCNN(nn.Module):
         return x
 
 
-# ── Preprocessing ────────────────────────────────────────────────
+# --- Preprocessing ---
 
 def make_training_pair(
     dns_velocity: np.ndarray,
@@ -92,11 +84,7 @@ def make_training_pair(
     **kwargs,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Creates input (filtered+downsampled) and target (velocity correction)
-    for closure training.
-
-    The correction = volume_averaged_DNS - filtered_downsampled, representing
-    what the coarse field is missing due to filtering.
+    Returns (filtered_downsampled, correction) where correction = volume_averaged_DNS - filtered_downsampled.
     """
     from ..preprocess import apply_gaussian_filter, volume_average
 

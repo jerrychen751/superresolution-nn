@@ -42,15 +42,7 @@ def apply_gaussian_filter(velocity: np.ndarray, sigma: float):
 
 def volume_average(velocity: np.ndarray, ds_step: int) -> np.ndarray:
     """
-    Coarsen a velocity field by averaging each (ds_step)^3 block.
-
-    Produces the physically meaningful cell-averaged velocity at coarse
-    resolution, matching what a finite-volume CFD solver computes.
-
-    Args:
-        velocity (N, N, N, 3): full-resolution velocity field where N is
-            divisible by ds_step.
-        ds_step: block size in each spatial dimension.
+    Coarsen a velocity field by averaging each (ds_step)^3 block into one value.
     """
     nz, ny, nx, c = velocity.shape
     reshaped = velocity.reshape(
