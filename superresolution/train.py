@@ -16,28 +16,15 @@ import hydra
 from hydra.core.config_store import ConfigStore
 from .config import SuperResolutionConfig
 
+
 cs = ConfigStore.instance()
 cs.store(name="config", node=SuperResolutionConfig)
 
-using_ddp = int(os.getenv("WORLD_SIZE", 1)) > 1
-if using_ddp:
-    dist.init_process_group("nccl")
-    world_size = dist.get_world_size() # n_nodes * n_procs per node
-    if not os.getenv("LOCAL_RANK"):
-        raise RuntimeError("Missing LOCAL_RANK env var, which is required for PyTorch DDP")
-    local_rank = int(os.getenv("LOCAL_RANK", 0))
-    device = torch.device(f"cuda:{local_rank}")
-else:
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-    else:
-        device = torch.device('cpu')
 
 class SuperResolutionDataset(Dataset):
     """
     Helps fetch the i-th training example when data is loaded from disk.
     """
-
     def __init__(
         self,
         inputs: list[Path],
@@ -62,6 +49,17 @@ class SuperResolutionDataset(Dataset):
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def train_eval(cfg: SuperResolutionConfig):
+    using_ddp = int(os.getenv("WORLD_SIZE", 1)) > 1
+    if using_ddp:
+        dist.init_process_group("nccl")
+        local_rank = int(os.environ["LOCAL_RANK"])
+        device = torch.device(f"cuda:{local_rank}")
+    else:
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        else:
+            device = torch.device('cpu')
+
     # Resolve processed data directory
     if cfg.processed_data_dir:
         processed_dir = Path(cfg.processed_data_dir)
