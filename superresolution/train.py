@@ -10,7 +10,13 @@ from torch.utils.data import Dataset, DataLoader, DistributedSampler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from .model import SuperResolutionCNN
+from .models import superresolution_cnn, superresolution_upsample_cnn, closure_cnn
+
+MODEL_REGISTRY = {
+    "superresolution_cnn": superresolution_cnn.SuperResolutionCNN,
+    "superresolution_upsample_cnn": superresolution_upsample_cnn.SuperResolutionUpsampleCNN,
+    "closure_cnn": closure_cnn.ClosureCNN,
+}
 
 import hydra
 from hydra.core.config_store import ConfigStore
@@ -114,7 +120,8 @@ def train_eval(cfg: SuperResolutionConfig):
         )
 
     # Model instantiation
-    model = SuperResolutionCNN().to(device)
+    ModelClass = MODEL_REGISTRY[cfg.model]
+    model = ModelClass().to(device)
     if using_ddp:
         model = DDP(model, device_ids=[local_rank])
 

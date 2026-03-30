@@ -6,6 +6,6 @@ defaults:
   # Placing it last means our top-level keys take priority over group defaults on conflict.
   - _self_
 
-# If these are invalid values, default to local values specified in the code
+model: superresolution_cnn
 raw_data_dir: null
 processed_data_dir: null

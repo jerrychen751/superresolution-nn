@@ -25,6 +25,7 @@ class DownloadConfig:
 class PreprocessConfig:
     sigma: float # standard deviation of Gaussian filter PDF
     downsample_step: int # stride used when downsampling
+    mode: str = "superresolution_cnn"
 
     spline_interpolation_order: int = 3
 
@@ -47,6 +48,7 @@ class SuperResolutionConfig:
     download: DownloadConfig = MISSING
     preprocess: PreprocessConfig = MISSING
     train: TrainConfig = MISSING
+    model: str = "superresolution_cnn"
     raw_data_dir: Optional[str] = None
     processed_data_dir: Optional[str] = None
 
