@@ -10,7 +10,7 @@ The goal is to allow the model to predict a correction term so that a low-res si
 from pathlib import Path
 
 import numpy as np
-from scipy.ndimage import gaussian_filter, zoom
+from scipy.ndimage import gaussian_filter
 
 import hydra
 from hydra.core.config_store import ConfigStore
@@ -40,25 +40,26 @@ def apply_gaussian_filter(velocity: np.ndarray, sigma: float):
     return filtered
 
 
-def make_training_pair(dns_velocity: np.ndarray, sigma: float, ds_step: int, spline_order: int):
+def volume_average(velocity: np.ndarray, ds_step: int) -> np.ndarray:
     """
-    Creates a pair of (input_features, expected_output) for the training of the model.
+    Coarsen a velocity field by averaging each (ds_step)^3 block.
+
+    Produces the physically meaningful cell-averaged velocity at coarse
+    resolution, matching what a finite-volume CFD solver computes.
 
     Args:
-        dns_velocity (nx, ny, nz, 3): Fine resolution simulation velocity flow field.
-        sigma: Standard deviation of Gaussian filter.
-        ds_step: Step size to use when downsampling after Gaussian blur.
-        spline_order: Order of spline interpolation used when upsampling.
+        velocity (N, N, N, 3): full-resolution velocity field where N is
+            divisible by ds_step.
+        ds_step: block size in each spatial dimension.
     """
-    # The blur alone is not enough (just smears the data; no loss)
-    # That's why downsampling must occur afterward
-    blurred = apply_gaussian_filter(dns_velocity, sigma=sigma)
-    coarse_blurred = blurred[::ds_step, ::ds_step, ::ds_step, :]
-
-    # Upsample to interpolate back to original resolution
-    coarse_upsampled = zoom(coarse_blurred, (ds_step, ds_step, ds_step, 1), order=spline_order, mode="wrap")
-    correction = dns_velocity - coarse_upsampled
-    return coarse_upsampled, correction
+    nz, ny, nx, c = velocity.shape
+    reshaped = velocity.reshape(
+        nz // ds_step, ds_step,
+        ny // ds_step, ds_step,
+        nx // ds_step, ds_step,
+        c,
+    )
+    return reshaped.mean(axis=(1, 3, 5))
 
 
 # Normalization
@@ -133,6 +134,17 @@ def prepare_dataset(cfg: SuperResolutionConfig):
         print("All processed files already exist, skipping preprocessing.")
         return
 
+    # Select the make_training_pair function based on preprocessing mode
+    mode = cfg.preprocess.mode
+    if mode == "superresolution_cnn":
+        from .models.superresolution_cnn import make_training_pair
+    elif mode == "superresolution_upsample_cnn":
+        from .models.superresolution_upsample_cnn import make_training_pair
+    elif mode == "closure_cnn":
+        from .models.closure_cnn import make_training_pair
+    else:
+        raise ValueError(f"Unknown preprocess mode: {mode}")
+
     # Pass 1: build pairs
     inputs = []
     targets = []
@@ -144,16 +156,16 @@ def prepare_dataset(cfg: SuperResolutionConfig):
 
         print(f"[preprocess] {fp.name}...", end=" ", flush=True)
         fine = np.load(fp).astype(np.float32)
-        coarse_up, correction = make_training_pair(
+        coarse, target = make_training_pair(
             fine,
             sigma=cfg.preprocess.sigma,
             ds_step=cfg.preprocess.downsample_step,
             spline_order=cfg.preprocess.spline_interpolation_order,
         )
-        inputs.append(coarse_up)
-        targets.append(correction)
+        inputs.append(coarse)
+        targets.append(target)
         print(
-            f"correction range: [{correction.min():.4f}, {correction.max():.4f}]"
+            f"target range: [{target.min():.4f}, {target.max():.4f}]"
         )
 
     # Pass 2: normalize and save
