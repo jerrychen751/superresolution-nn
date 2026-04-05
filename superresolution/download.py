@@ -75,7 +75,7 @@ def download_cubes(
 
         print(f"[download] time step {t}...", end=" ", flush=True)
         velocity = get_velocity_cube(conn, t, nx=nx, ny=ny, nz=nz) # (nz, ny, nx, 3)
-        tmp_path = out_path.with_suffix(".npy.tmp")
+        tmp_path = out_path.parent / f"velocity_t{t:04d}.tmp.npy"
         np.save(tmp_path, velocity)
         tmp_path.rename(out_path)  # atomic on same filesystem
         print(f"saved {out_path}  shape={velocity.shape}")

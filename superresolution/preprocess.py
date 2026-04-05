@@ -174,13 +174,13 @@ def prepare_dataset(cfg: SuperResolutionConfig):
         tgt_norm = target_stats.normalize(targets[i])
         for name, arr in [("input", inp_norm), ("target", tgt_norm)]:
             out = processed_dir / f"{name}_t{t_str}.npy"
-            tmp = out.with_suffix(".npy.tmp")
+            tmp = processed_dir / f"{name}_t{t_str}.tmp.npy"
             np.save(tmp, arr)
             tmp.rename(out)
 
     for name, stats in [("input_stats", input_stats), ("target_stats", target_stats)]:
         out = processed_dir / f"{name}.npz"
-        tmp = out.with_suffix(".npz.tmp")
+        tmp = processed_dir / f"{name}.tmp.npz"
         stats.save(tmp)
         tmp.rename(out)
     print(f"Saved {len(time_labels)} pairs + stats to {processed_dir}")
