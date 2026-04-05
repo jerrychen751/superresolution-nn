@@ -11,15 +11,30 @@
 #SBATCH --output=logs/%j.out           # stdout -> logs/<jobid>.out
 #SBATCH --error=logs/%j.err            # stderr -> logs/<jobid>.err
 
-# Exit immediately if any command fails
+# Usage:
+#   sbatch --export=MODEL=superresolution_cnn hpc_training.sh
+#   sbatch --export=MODEL=closure_cnn hpc_training.sh
+#   sbatch --export=MODEL=superresolution_upsample_cnn hpc_training.sh
+#
+# MODEL selects which model variant to preprocess and train.
+# preprocess.mode is automatically derived from model via config interpolation.
+# Each variant gets its own processed data directory on scratch.
+# Set SKIP_DOWNLOAD=1 to skip the download step (use existing raw data).
+
 set -euo pipefail
+
+# Validate MODEL is set
+if [ -z "${MODEL:-}" ]; then
+    echo "ERROR: MODEL environment variable not set. Use: sbatch --export=MODEL=<variant> hpc_training.sh"
+    exit 1
+fi
+echo "Model variant: $MODEL"
 
 # Environment
 source activate ai
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 
 # Diagnostics
-# $SLURM_JOB_ID is environment variable automatically set by SLURM
 echo "Job $SLURM_JOB_ID started at $(date)"
 echo "Running on node: $(hostname)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
@@ -28,22 +43,25 @@ nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 PROJECT_DIR=$HOME/projects/pi-cnn
 SCRATCH=/storage/ice1/3/9/jchen3421
 RAW_DIR=$SCRATCH/pi-cnn/data/raw
-PROCESSED_DIR=$SCRATCH/pi-cnn/data/processed
+PROCESSED_DIR=$SCRATCH/pi-cnn/data/processed_${MODEL}
 
-# Navigate to project root (code)
 cd $PROJECT_DIR
 
-# Create data directories if they don't exist
 mkdir -p $RAW_DIR $PROCESSED_DIR
 
-# Step 1: Download velocity cubes from JHTDB
-echo "=== Step 1: Download ==="
-python -m superresolution.download \
-    raw_data_dir=$RAW_DIR
+# Step 1: Download velocity cubes from JHTDB (shared across variants)
+if [ "${SKIP_DOWNLOAD:-0}" = "1" ]; then
+    echo "=== Step 1: Download (SKIPPED) ==="
+else
+    echo "=== Step 1: Download ==="
+    python -m superresolution.download \
+        raw_data_dir=$RAW_DIR
+fi
 
-# Step 2: Preprocess (blur, downsample, normalize)
-echo "=== Step 2: Preprocess ==="
+# Step 2: Preprocess (mode is derived from model via config interpolation)
+echo "=== Step 2: Preprocess (model=$MODEL) ==="
 python -m superresolution.preprocess \
+    model=$MODEL \
     raw_data_dir=$RAW_DIR \
     processed_data_dir=$PROCESSED_DIR
 
@@ -53,7 +71,7 @@ MASTER_PORT=29500
 export MASTER_ADDR MASTER_PORT
 
 # Step 3: Train model
-echo "=== Step 3: Train ==="
+echo "=== Step 3: Train (model=$MODEL) ==="
 srun torchrun \
     --nnodes=$SLURM_NNODES \
     --nproc_per_node=$SLURM_GPUS_ON_NODE \
@@ -61,6 +79,7 @@ srun torchrun \
     --rdzv_backend=c10d \
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
     -m superresolution.train \
+    model=$MODEL \
     processed_data_dir=$PROCESSED_DIR \
     train=hpc
 
