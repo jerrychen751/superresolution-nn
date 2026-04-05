@@ -71,8 +71,11 @@ MASTER_PORT=29500
 export MASTER_ADDR MASTER_PORT
 
 # Step 3: Train model
+# Resolve torchrun's full path before srun, since srun spawns a new process
+# that may not inherit conda's PATH modifications.
+TORCHRUN=$(which torchrun)
 echo "=== Step 3: Train (model=$MODEL) ==="
-srun torchrun \
+srun $TORCHRUN \
     --nnodes=$SLURM_NNODES \
     --nproc_per_node=$SLURM_GPUS_ON_NODE \
     --rdzv_id=$SLURM_JOB_ID \
