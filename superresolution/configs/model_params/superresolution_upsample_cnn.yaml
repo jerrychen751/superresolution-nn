@@ -1,0 +1,4 @@
+_target_: superresolution.models.superresolution_upsample_cnn.SuperResolutionUpsampleCNN
+hidden_channels: 32
+num_blocks: 4
+num_upsample_stages: 3

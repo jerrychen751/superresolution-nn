@@ -4,8 +4,8 @@ Module contains dataclass definitions for expected configs for the ML experiment
 Hydra handles the loading of configs.
 """
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Any, Optional
 
 from omegaconf import MISSING
 
@@ -49,6 +49,12 @@ class SuperResolutionConfig:
     preprocess: PreprocessConfig = MISSING
     train: TrainConfig = MISSING
     model: str = "superresolution_cnn"
+    # model_params contains _target_ (class path) + constructor kwargs.
+    # hydra.utils.instantiate(cfg.model_params) builds the model.
+    model_params: Any = MISSING
     raw_data_dir: Optional[str] = None
     processed_data_dir: Optional[str] = None
+    checkpoints_dir: Optional[str] = None
+    weights_dir: Optional[str] = None
+    outputs_dir: Optional[str] = None
 
