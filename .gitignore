@@ -4,6 +4,7 @@
 *.npz
 *.h5
 *.hdf5
+*.pt
 **/data/raw/
 **/data/processed/
 
