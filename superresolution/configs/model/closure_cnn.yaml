@@ -1,0 +1,5 @@
+name: closure_cnn
+params:
+  _target_: superresolution.models.closure_cnn.ClosureCNN
+  hidden_channels: 32
+  num_blocks: 4

@@ -48,10 +48,7 @@ class SuperResolutionConfig:
     download: DownloadConfig = MISSING
     preprocess: PreprocessConfig = MISSING
     train: TrainConfig = MISSING
-    model: str = "superresolution_cnn"
-    # model_params contains _target_ (class path) + constructor kwargs.
-    # hydra.utils.instantiate(cfg.model_params) builds the model.
-    model_params: Any = MISSING
+    model: Any = MISSING  # loaded from configs/model/ config group
     raw_data_dir: Optional[str] = None
     processed_data_dir: Optional[str] = None
     checkpoints_dir: Optional[str] = None

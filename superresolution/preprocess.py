@@ -134,6 +134,8 @@ def prepare_dataset(cfg: SuperResolutionConfig):
         from .models.superresolution_upsample_cnn import make_training_pair
     elif mode == "closure_cnn":
         from .models.closure_cnn import make_training_pair
+    elif mode == "fno":
+        from .models.fno import make_training_pair
     else:
         raise ValueError(f"Unknown preprocess mode: {mode}")
 

@@ -1,4 +1,0 @@
-_target_: superresolution.models.superresolution_upsample_cnn.SuperResolutionUpsampleCNN
-hidden_channels: 32
-num_blocks: 4
-num_upsample_stages: 2  # 2 stages of 2x: 32→64→128. Must match downsample_step (128/4=32).

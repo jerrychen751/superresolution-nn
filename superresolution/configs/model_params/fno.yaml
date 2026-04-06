@@ -1,7 +1,0 @@
-_target_: superresolution.models.fno.FNO3d
-in_channels: 6    # 3 velocity + 3 grid coordinates
-out_channels: 3
-d_v: 32           # channel width inside Fourier layers
-k_max: 12         # max Fourier modes kept per dimension
-n_fourier_layers: 4
-proj_hidden: 128  # hidden dim in the output projection MLP

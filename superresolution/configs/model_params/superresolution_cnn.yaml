@@ -1,5 +1,0 @@
-# _target_ tells hydra.utils.instantiate() which class to construct.
-# All other keys are passed as kwargs to the constructor.
-_target_: superresolution.models.superresolution_cnn.SuperResolutionCNN
-hidden_channels: 32
-num_blocks: 4

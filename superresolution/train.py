@@ -10,13 +10,10 @@ from torch.utils.data import Dataset, DataLoader, DistributedSampler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from .models import superresolution_cnn, superresolution_upsample_cnn, closure_cnn
+import hydra.utils
 
-MODEL_REGISTRY = {
-    "superresolution_cnn": superresolution_cnn.SuperResolutionCNN,
-    "superresolution_upsample_cnn": superresolution_upsample_cnn.SuperResolutionUpsampleCNN,
-    "closure_cnn": closure_cnn.ClosureCNN,
-}
+# Models that need 3D grid coordinates appended to input channels
+GRID_COORD_MODELS = {"fno"}
 
 import hydra
 from hydra.core.config_store import ConfigStore
@@ -34,11 +31,30 @@ class SuperResolutionDataset(Dataset):
     def __init__(
         self,
         inputs: list[Path],
-        targets: list[Path]
+        targets: list[Path],
+        append_grid: bool = False,
     ) -> None:
         self.inputs = inputs
         self.targets = targets
-    
+        self.append_grid = append_grid
+        self._grid = None
+
+    def _get_grid(self, nz: int, ny: int, nx: int) -> np.ndarray:
+        """
+        Build and cache a (3, nz, ny, nx) array of normalized [0,1]
+        spatial coordinates. FNO models use these to break translational
+        symmetry — without them, the spectral convolution treats all
+        spatial locations identically.
+        """
+        if self._grid is None:
+            gz = np.linspace(0, 1, nz, dtype=np.float32)
+            gy = np.linspace(0, 1, ny, dtype=np.float32)
+            gx = np.linspace(0, 1, nx, dtype=np.float32)
+            # meshgrid with 'ij' indexing: output[i][j][k] = (gz[i], gy[j], gx[k])
+            grid_z, grid_y, grid_x = np.meshgrid(gz, gy, gx, indexing='ij')
+            self._grid = np.stack([grid_z, grid_y, grid_x], axis=0)  # (3, nz, ny, nx)
+        return self._grid
+
     def __len__(self) -> int:
         return len(self.inputs)
 
@@ -51,6 +67,12 @@ class SuperResolutionDataset(Dataset):
         # Conv3d expects (batch_size, C, D, H, W)
         input_data = np.transpose(input_data, (3, 0, 1, 2))
         target_data = np.transpose(target_data, (3, 0, 1, 2))
+
+        if self.append_grid:
+            # Concatenate grid coords: (3, nz, ny, nx) → (6, nz, ny, nx)
+            grid = self._get_grid(*input_data.shape[1:])
+            input_data = np.concatenate([input_data, grid], axis=0)
+
         return torch.from_numpy(input_data), torch.from_numpy(target_data)
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
@@ -66,19 +88,28 @@ def train_eval(cfg: SuperResolutionConfig):
         else:
             device = torch.device('cpu')
 
-    # Resolve processed data directory
+    # Resolve data and output directories
+    base_dir = Path(__file__).resolve().parent
+
     if cfg.processed_data_dir:
         processed_dir = Path(cfg.processed_data_dir)
     else:
-        processed_dir = Path(__file__).resolve().parent / "data" / "processed"
+        processed_dir = base_dir / "data" / "processed"
+
+    if cfg.checkpoints_dir:
+        checkpoints_dir = Path(cfg.checkpoints_dir)
+    else:
+        checkpoints_dir = base_dir / "checkpoints" / cfg.model.name
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
     # Construct Datasets
     input_fps = sorted(processed_dir.glob('input_t*.npy'))
     target_fps = sorted(processed_dir.glob('target_t*.npy'))
     n_train = int(cfg.train.train_ratio * len(input_fps))
 
-    train_ds = SuperResolutionDataset(input_fps[:n_train], target_fps[:n_train])
-    test_ds = SuperResolutionDataset(input_fps[n_train:], target_fps[n_train:])
+    append_grid = cfg.model.name in GRID_COORD_MODELS
+    train_ds = SuperResolutionDataset(input_fps[:n_train], target_fps[:n_train], append_grid=append_grid)
+    test_ds = SuperResolutionDataset(input_fps[n_train:], target_fps[n_train:], append_grid=append_grid)
 
     # Wrap Datasets in DataLoader
     if using_ddp:
@@ -119,9 +150,8 @@ def train_eval(cfg: SuperResolutionConfig):
             num_workers=cfg.train.num_workers,
         )
 
-    # Model instantiation
-    ModelClass = MODEL_REGISTRY[cfg.model]
-    model = ModelClass().to(device)
+    # Hydra resolves _target_ to the model class and passes remaining keys as constructor kwargs (from configs/model/<name>.yaml).
+    model = hydra.utils.instantiate(cfg.model.params).to(device)
     if using_ddp:
         model = DDP(model, device_ids=[local_rank])
 
@@ -145,7 +175,7 @@ def train_eval(cfg: SuperResolutionConfig):
     criterion = torch.nn.MSELoss() # (prediction - target)^2
 
     # Training loop
-    for epoch in range(cfg.train.epochs):
+    for epoch in range(1, cfg.train.epochs + 1):
         # Sampler uses current epoch as a seed for generating partitions
         if using_ddp:
             train_sampler.set_epoch(epoch)
@@ -203,7 +233,7 @@ def train_eval(cfg: SuperResolutionConfig):
                     "train_loss": train_loss,
                     "test_loss": test_loss
                 }
-                torch.save(checkpoint, f"checkpoint_epoch_{epoch}.pt")
+                torch.save(checkpoint, checkpoints_dir / f"checkpoint_epoch_{epoch}.pt")
 
             if using_ddp:
                 # Block other processes until all reach this point; all ranks should hit this
