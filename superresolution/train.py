@@ -2,7 +2,9 @@
 Containing training and evaluation code for the model. Parameters are stored at checkpoint intervals.
 """
 
+import csv
 import os
+from datetime import datetime
 from pathlib import Path
 import numpy as np
 import torch
@@ -89,6 +91,20 @@ def train_eval(cfg: SuperResolutionConfig):
     else:
         checkpoints_dir = base_dir / "checkpoints" / cfg.model.name
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
+
+    # Per-epoch loss log: one CSV per run, written only by the primary process.
+    is_primary = not using_ddp or dist.get_rank() == 0
+    csv_file = None
+    csv_writer = None
+    if is_primary:
+        logs_dir = base_dir / "logs" / cfg.model.name
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        csv_path = logs_dir / f"train_{timestamp}.csv"
+        csv_file = csv_path.open("w", newline="")
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(["epoch", "train_loss", "test_loss", "learning_rate"])
+        print(f"Logging per-epoch stats to {csv_path}", flush=True)
 
     # Construct Datasets
     input_fps = sorted(processed_dir.glob('input_t*.npy'))
@@ -210,6 +226,16 @@ def train_eval(cfg: SuperResolutionConfig):
         else:
             test_loss /= len(test_ds)
 
+        # Per-epoch log: stdout (for slurm capture) + CSV (for later analysis).
+        if is_primary:
+            current_lr = optimizer.param_groups[0]["lr"]
+            print(
+                f"epoch {epoch}/{cfg.train.epochs}  train={train_loss:.4e}  test={test_loss:.4e}  lr={current_lr:.2e}",
+                flush=True,
+            )
+            csv_writer.writerow([epoch, train_loss, test_loss, current_lr])
+            csv_file.flush()
+
         # Save the model at checkpoints, as well as loss stats
         if epoch % 50 == 0:
             if not using_ddp or dist.get_rank() == 0:
@@ -229,6 +255,9 @@ def train_eval(cfg: SuperResolutionConfig):
 
             
         scheduler.step() # adjust LR before the next epoch
+
+    if csv_file is not None:
+        csv_file.close()
 
     if using_ddp:
         dist.destroy_process_group()
