@@ -12,9 +12,9 @@
 #SBATCH --error=logs/%j.err            # stderr -> logs/<jobid>.err
 
 # Usage:
-#   sbatch --export=MODEL=superresolution_cnn hpc_training.sh
+#   sbatch --export=MODEL=cnn hpc_training.sh
 #   sbatch --export=MODEL=closure_cnn hpc_training.sh
-#   sbatch --export=MODEL=superresolution_upsample_cnn hpc_training.sh
+#   sbatch --export=MODEL=upsample_cnn hpc_training.sh
 #
 # MODEL selects which model variant to preprocess and train.
 # preprocess.mode is automatically derived from model via config interpolation.

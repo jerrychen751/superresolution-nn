@@ -2,7 +2,7 @@ defaults:
   - download: default
   - preprocess: default
   - train: default
-  - model: superresolution_cnn
+  - model: cnn
   - _self_
 
 raw_data_dir: null

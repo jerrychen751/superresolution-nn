@@ -128,10 +128,10 @@ def prepare_dataset(cfg: SuperResolutionConfig):
 
     # Select the make_training_pair function based on preprocessing mode
     mode = cfg.preprocess.mode
-    if mode == "superresolution_cnn":
-        from .models.superresolution_cnn import make_training_pair
-    elif mode == "superresolution_upsample_cnn":
-        from .models.superresolution_upsample_cnn import make_training_pair
+    if mode == "cnn":
+        from .models.cnn import make_training_pair
+    elif mode == "upsample_cnn":
+        from .models.upsample_cnn import make_training_pair
     elif mode == "closure_cnn":
         from .models.closure_cnn import make_training_pair
     elif mode == "fno":
