@@ -1,4 +1,0 @@
-sigma: 1.0
-downsample_step: 4
-spline_interpolation_order: 3
-mode: ${model.name}  # derived from the model config group selection

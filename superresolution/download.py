@@ -14,7 +14,7 @@ from hydra.core.config_store import ConfigStore
 from .config import SuperResolutionConfig
 
 cs = ConfigStore.instance()
-cs.store(name="config", node=SuperResolutionConfig)
+cs.store(name="base_config", node=SuperResolutionConfig)
 
 
 def get_jhtdb_conn(dataset: str, cache_dir: str, token: str) -> turb_dataset:
@@ -81,7 +81,7 @@ def download_cubes(
         print(f"saved {out_path}  shape={velocity.shape}")
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="config")
+@hydra.main(version_base=None, config_path="configs", config_name="cnn")
 def main(cfg: SuperResolutionConfig):
     # Resolve raw data directory
     if cfg.raw_data_dir:

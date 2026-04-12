@@ -1,6 +1,0 @@
-name: gnn
-params:
-  _target_: superresolution.models.gnn.SimpleGNN
-  in_channels: 32
-  hidden_layers: 3
-  out_channels: 3

@@ -1,0 +1,9 @@
+defaults:
+  - default
+  - _self_
+
+model:
+  name: gnn
+  params:
+    _target_: superresolution.models.gnn.GNN
+    hidden_channels: 32

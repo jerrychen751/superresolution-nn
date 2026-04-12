@@ -1,0 +1,32 @@
+defaults:
+  - base_config
+  - _self_
+
+download:
+  jhtdb_dataset: isotropic1024coarse
+  jhtdb_cache_dir: ./jhtdb_output
+  nx: 128
+  ny: 128
+  nz: 128
+  num_cubes: 700
+  max_timesteps: 5024
+  jhtdb_token: edu.gatech.jerrychen-6b7455a7
+
+preprocess:
+  sigma: 1.0
+  downsample_step: 4
+  spline_interpolation_order: 3
+
+train:
+  epochs: 1000
+  train_ratio: 0.8
+  learning_rate: 0.001
+  eta_min: 1.0e-6
+  batch_size: 4
+  num_workers: 4
+
+raw_data_dir: null
+processed_data_dir: null
+checkpoints_dir: null
+weights_dir: null
+outputs_dir: null

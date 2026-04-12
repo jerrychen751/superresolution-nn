@@ -1,6 +1,0 @@
-epochs: 1000
-train_ratio: 0.8
-learning_rate: 0.001
-eta_min: 1.0e-6
-batch_size: 4
-num_workers: 4

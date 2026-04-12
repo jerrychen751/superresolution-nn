@@ -1,22 +1,46 @@
 ### Introduction
-Lots of industry ML use Hydra (developed by Meta) as the standard for an experiment configuration manager, which utilizes YAML files to specify things that may vary across experiments. For example, the number of training data points that we want, or the number of epochs that we want the training to go on for, or even the dataset that we want to be loading from the JHU Turbulence Database.
+This project uses [Hydra](https://hydra.cc/) (developed by Meta) as its experiment configuration manager. Hydra composes nested YAML files into a single runtime config object and supports command-line overrides for quick experimentation.
 
-Use the following command for installation:
-
+Install:
 ```
 conda install conda-forge::hydra-core=1.3.2 conda-forge::omegaconf=2.3.0
 ```
 
-### Config Setup
-`configs/` contains a root YAML file, as well as multiple subfolders. The names of the subfolders are based on the "group" that its YAML files configures for.
+### Layout
+The `configs/` directory is flat — one YAML file per experiment plus a shared base:
 
-For example, if we needed to change what data was downloaded (e.g., how many snapshots, how large of a cube), then we would create a group/subfolder called `download/`.
-- Within the subfolder, YAML keys must exactly match the dataclasses defined in `config.py`.
+```
+configs/
+  default.yaml       # shared baseline for every experiment
+  cnn.yaml           # each model file extends default and sets model
+  closure_cnn.yaml
+  upsample_cnn.yaml
+  fno.yaml
+  gnn.yaml
+```
 
-The root `config.yaml` declares which variation of YAML config to use for each group, and can also declare any top-level config values which don't belong in any particular group.
+`default.yaml` contains the download, preprocess, and train blocks that every experiment uses (and the `raw_data_dir` / `processed_data_dir` / `checkpoints_dir` knobs). It deliberately does not set `model` — a runnable experiment must specify one.
+
+Each model-specific yaml declares a defaults list that pulls in `default.yaml`, then adds its own `model` block:
+
+```yaml
+# cnn.yaml
+defaults:
+  - default
+  - _self_
+
+model:
+  name: cnn
+  params:
+    _target_: superresolution.models.cnn.SuperResolutionCNN
+    hidden_channels: 32
+    num_blocks: 4
+```
+
+The `_target_` field tells `hydra.utils.instantiate()` which class to construct; the rest of `params` becomes constructor kwargs. `model.name` is a plain string used by `preprocess.py` to pick the right `make_training_pair` function.
 
 ### Structured Configs (Type Safety)
-Dataclasses in `config.py` define the expected schema for each config group. A top-level `SuperResolutionConfig` dataclass ties them all together:
+Dataclasses in `config.py` define the schema for the composed config. `SuperResolutionConfig` ties them together:
 
 ```python
 @dataclass
@@ -24,43 +48,44 @@ class SuperResolutionConfig:
     download: DownloadConfig = MISSING
     preprocess: PreprocessConfig = MISSING
     train: TrainConfig = MISSING
+    model: Any = MISSING
     raw_data_dir: Optional[str] = None
     processed_data_dir: Optional[str] = None
 ```
 
-To get type checking and autocomplete in your IDE, register the schema with Hydra's `ConfigStore` at the top of each entry-point script:
+Each entry-point script (`train.py`, `preprocess.py`, `download.py`) registers this schema with Hydra under the name `base_config`:
 
 ```python
 from hydra.core.config_store import ConfigStore
 from .config import SuperResolutionConfig
 
 cs = ConfigStore.instance()
-cs.store(name="config", node=SuperResolutionConfig)
+cs.store(name="base_config", node=SuperResolutionConfig)
 ```
 
-Then annotate the entry-point function with `SuperResolutionConfig` instead of `DictConfig`:
-
-```python
-@hydra.main(version_base=None, config_path="configs", config_name="config")
-def train_eval(cfg: SuperResolutionConfig):
-    cfg.train.epochs  # Pylance knows this is int
+`default.yaml` then pulls in `base_config` via its own defaults list:
+```yaml
+defaults:
+  - base_config
+  - _self_
 ```
 
-### Running Code
-Add a `@hydra.main` decorator on top of the entrypoint function:
-- `version_base=None` uses latest version (avoids deprecation warnings)
-- `config_path="configs"` specifies relative path from the Python script to the `configs/` folder
-- `config_name="config"` points to the primary config file within that folder
+Any yaml that extends `default.yaml` transitively inherits the schema, so type validation applies to all model configs without having to repeat the reference per file.
 
-```python
-@hydra.main(version_base=None, config_path="configs", config_name="config")
-def train_eval(cfg: SuperResolutionConfig):
-    ...
+### Running
+Each entry-point script uses `@hydra.main` with `config_name="cnn"` as the default root, so running with no arguments uses `cnn.yaml`. Pass `--config-name=<model>` to select a different experiment:
+
+```bash
+python -m superresolution.train                           # cnn (default)
+python -m superresolution.train --config-name=gnn         # gnn
+python -m superresolution.preprocess --config-name=fno    # fno
 ```
 
-Config values can be overridden from the command line:
-```
-python -m superresolution.train train.epochs=500 train.batch_size=4
+Override individual fields on top of the selected config with standard Hydra syntax:
+
+```bash
+python -m superresolution.train --config-name=cnn train.epochs=500 train.batch_size=4
+python -m superresolution.download raw_data_dir=/path/to/raw
 ```
 
-**Working Dir**: When Hydra runs a script, it automatically cd's into a timestamped output directory (e.g., `outputs/2026-03-01/14-30-00/`) before the code executes so that output logs are stored there. Use `Path(__file__).resolve()` instead of relative paths to reference project files.
+**Working dir caveat**: Hydra automatically `cd`s into a timestamped `outputs/` directory at startup so each run's logs and checkpoints are isolated. Inside any `@hydra.main`-decorated function, always resolve file paths with `Path(__file__).resolve()` — relative paths will point to the wrong location.

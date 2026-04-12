@@ -17,7 +17,7 @@
 #   sbatch --export=MODEL=upsample_cnn hpc_training.sh
 #
 # MODEL selects which model variant to preprocess and train.
-# preprocess.mode is automatically derived from model via config interpolation.
+# preprocess.py reads cfg.model.name directly to pick the matching make_training_pair.
 # Each variant gets its own processed data directory on scratch.
 # Set SKIP_DOWNLOAD=1 to skip the download step (use existing raw data).
 
@@ -58,10 +58,10 @@ else
         raw_data_dir=$RAW_DIR
 fi
 
-# Step 2: Preprocess (mode is derived from model via config interpolation)
+# Step 2: Preprocess
 echo "=== Step 2: Preprocess (model=$MODEL) ==="
 python -m superresolution.preprocess \
-    model=$MODEL \
+    --config-name=$MODEL \
     raw_data_dir=$RAW_DIR \
     processed_data_dir=$PROCESSED_DIR
 
@@ -82,8 +82,9 @@ srun $TORCHRUN \
     --rdzv_backend=c10d \
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
     -m superresolution.train \
-    model=$MODEL \
+    --config-name=$MODEL \
     processed_data_dir=$PROCESSED_DIR \
-    train=hpc
+    train.batch_size=1 \
+    train.num_workers=2
 
 echo "Job $SLURM_JOB_ID finished at $(date)"

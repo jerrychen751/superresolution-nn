@@ -1,8 +1,0 @@
-jhtdb_dataset: isotropic1024coarse
-jhtdb_cache_dir: ./jhtdb_output
-nx: 128
-ny: 128
-nz: 128
-num_cubes: 700
-max_timesteps: 5024
-jhtdb_token: edu.gatech.jerrychen-6b7455a7
