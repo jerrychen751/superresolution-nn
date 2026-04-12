@@ -6,76 +6,64 @@ import os
 from pathlib import Path
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader, DistributedSampler
+from torch.utils.data import DistributedSampler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 import hydra.utils
-
-# Models that need 3D grid coordinates appended to input channels
-GRID_COORD_MODELS = {"fno"}
-
 import hydra
 from hydra.core.config_store import ConfigStore
 from .config import SuperResolutionConfig
 
 
 cs = ConfigStore.instance()
-cs.store(name="config", node=SuperResolutionConfig)
+cs.store(name="base_config", node=SuperResolutionConfig)
 
 
-class SuperResolutionDataset(Dataset):
+def _get_data_classes(model_name: str):
     """
-    Helps fetch the i-th training example when data is loaded from disk.
+    Return (Dataset class, DataLoader class) for the given model. GNN uses
+    torch_geometric's DataLoader because its batching collates Data objects
+    by concatenating nodes, not stacking tensors.
     """
-    def __init__(
-        self,
-        inputs: list[Path],
-        targets: list[Path],
-        append_grid: bool = False,
-    ) -> None:
-        self.inputs = inputs
-        self.targets = targets
-        self.append_grid = append_grid
-        self._grid = None
+    if model_name == "cnn":
+        from .models.cnn import CNNDataset
+        from torch.utils.data import DataLoader
+        return CNNDataset, DataLoader
+    if model_name == "upsample_cnn":
+        from .models.upsample_cnn import UpsampleCNNDataset
+        from torch.utils.data import DataLoader
+        return UpsampleCNNDataset, DataLoader
+    if model_name == "closure_cnn":
+        from .models.closure_cnn import ClosureCNNDataset
+        from torch.utils.data import DataLoader
+        return ClosureCNNDataset, DataLoader
+    if model_name == "fno":
+        from .models.fno import FNODataset
+        from torch.utils.data import DataLoader
+        return FNODataset, DataLoader
+    if model_name == "gnn":
+        from .models.gnn import GNNDataset
+        from torch_geometric.loader import DataLoader
+        return GNNDataset, DataLoader
+    raise ValueError(f"Unknown model name: {model_name}")
 
-    def _get_grid(self, nz: int, ny: int, nx: int) -> np.ndarray:
-        """
-        Build and cache a (3, nz, ny, nx) array of normalized [0,1]
-        spatial coordinates. FNO models use these to break translational
-        symmetry — without them, the spectral convolution treats all
-        spatial locations identically.
-        """
-        if self._grid is None:
-            gz = np.linspace(0, 1, nz, dtype=np.float32)
-            gy = np.linspace(0, 1, ny, dtype=np.float32)
-            gx = np.linspace(0, 1, nx, dtype=np.float32)
-            # meshgrid with 'ij' indexing: output[i][j][k] = (gz[i], gy[j], gx[k])
-            grid_z, grid_y, grid_x = np.meshgrid(gz, gy, gx, indexing='ij')
-            self._grid = np.stack([grid_z, grid_y, grid_x], axis=0)  # (3, nz, ny, nx)
-        return self._grid
 
-    def __len__(self) -> int:
-        return len(self.inputs)
+def _unpack_batch(batch, device, is_graph: bool):
+    """
+    Normalize a DataLoader batch into (model_input, target, batch_size). For
+    graph models the Data object is itself the model input; for dense models
+    it's the input tensor.
+    """
+    if is_graph:
+        batch = batch.to(device)
+        return batch, batch.y, batch.num_graphs
+    inputs, targets = batch
+    inputs = inputs.to(device)
+    targets = targets.to(device)
+    return inputs, targets, inputs.size(0)
 
-    def __getitem__(self, i: int) -> tuple[torch.Tensor, torch.Tensor]:
-        # Shape from disk: (nz, ny, nx, 3) for axis 0, 1, 2, 3
-        input_data = np.load(self.inputs[i]).astype(np.float32)
-        target_data = np.load(self.targets[i]).astype(np.float32)
-
-        # Move channels to front: (nz, ny, nx, 3) → (3, nz, ny, nx)
-        # Conv3d expects (batch_size, C, D, H, W)
-        input_data = np.transpose(input_data, (3, 0, 1, 2))
-        target_data = np.transpose(target_data, (3, 0, 1, 2))
-
-        if self.append_grid:
-            # Concatenate grid coords: (3, nz, ny, nx) → (6, nz, ny, nx)
-            grid = self._get_grid(*input_data.shape[1:])
-            input_data = np.concatenate([input_data, grid], axis=0)
-
-        return torch.from_numpy(input_data), torch.from_numpy(target_data)
-
-@hydra.main(version_base=None, config_path="configs", config_name="config")
+@hydra.main(version_base=None, config_path="configs", config_name="cnn")
 def train_eval(cfg: SuperResolutionConfig):
     using_ddp = int(os.getenv("WORLD_SIZE", 1)) > 1
     if using_ddp:
@@ -107,9 +95,11 @@ def train_eval(cfg: SuperResolutionConfig):
     target_fps = sorted(processed_dir.glob('target_t*.npy'))
     n_train = int(cfg.train.train_ratio * len(input_fps))
 
-    append_grid = cfg.model.name in GRID_COORD_MODELS
-    train_ds = SuperResolutionDataset(input_fps[:n_train], target_fps[:n_train], append_grid=append_grid)
-    test_ds = SuperResolutionDataset(input_fps[n_train:], target_fps[n_train:], append_grid=append_grid)
+    DatasetCls, LoaderCls = _get_data_classes(cfg.model.name)
+    is_graph = cfg.model.name == "gnn"
+
+    train_ds = DatasetCls(input_fps[:n_train], target_fps[:n_train])
+    test_ds = DatasetCls(input_fps[n_train:], target_fps[n_train:])
 
     # Wrap Datasets in DataLoader
     if using_ddp:
@@ -118,7 +108,7 @@ def train_eval(cfg: SuperResolutionConfig):
             dataset=train_ds,
             shuffle=True
         )
-        train_loader = DataLoader(
+        train_loader = LoaderCls(
             dataset=train_ds,
             batch_size=cfg.train.batch_size,
             pin_memory=True,
@@ -129,7 +119,7 @@ def train_eval(cfg: SuperResolutionConfig):
             dataset=test_ds,
             shuffle=False
         )
-        test_loader = DataLoader(
+        test_loader = LoaderCls(
             dataset=test_ds,
             batch_size=cfg.train.batch_size,
             pin_memory=True,
@@ -137,13 +127,13 @@ def train_eval(cfg: SuperResolutionConfig):
             sampler=test_sampler
         )
     else:
-        train_loader = DataLoader(
+        train_loader = LoaderCls(
             dataset=train_ds,
             batch_size=cfg.train.batch_size,
             shuffle=True, # don't always pair up same samples
             num_workers=cfg.train.num_workers,
         )
-        test_loader = DataLoader(
+        test_loader = LoaderCls(
             dataset=test_ds,
             batch_size=cfg.train.batch_size,
             shuffle=False, # deterministic pairing
@@ -182,11 +172,11 @@ def train_eval(cfg: SuperResolutionConfig):
 
         model.train()
         train_loss = 0.0 # average loss per epoch
-        for inputs, targets in train_loader:
-            inputs, targets = inputs.to(device), targets.to(device)
+        for batch in train_loader:
+            model_input, targets, bs = _unpack_batch(batch, device, is_graph)
 
             # Forward pass
-            predictions = model(inputs)
+            predictions = model(model_input)
             loss = criterion(predictions, targets)
 
             # Backward pass
@@ -194,10 +184,8 @@ def train_eval(cfg: SuperResolutionConfig):
             loss.backward() # compute and attach gradients to params
             optimizer.step() # update weights
 
-            # Increment total loss
-            # loss.item() returns average MSE over the batch
-            # inputs.size(0) returns batch size
-            train_loss += loss.item() * inputs.size(0)
+            # loss.item() returns average MSE over the batch; bs scales it per-sample.
+            train_loss += loss.item() * bs
 
         if using_ddp:
             local_train_loss = torch.tensor(train_loss, device=device)
@@ -210,10 +198,10 @@ def train_eval(cfg: SuperResolutionConfig):
         model.eval()
         test_loss = 0.0
         with torch.no_grad():
-            for inputs, targets in test_loader:
-                inputs, targets = inputs.to(device), targets.to(device)
-                loss = criterion(model(inputs), targets)
-                test_loss += loss.item() * inputs.size(0)
+            for batch in test_loader:
+                model_input, targets, bs = _unpack_batch(batch, device, is_graph)
+                loss = criterion(model(model_input), targets)
+                test_loss += loss.item() * bs
         
         if using_ddp:
             local_test_loss = torch.tensor(test_loss, device=device)

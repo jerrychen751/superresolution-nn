@@ -4,10 +4,13 @@ Closure CNN: coarse input -> velocity correction at same resolution.
 u_corrected = coarse + model(coarse)
 """
 
+from pathlib import Path
+
 import numpy as np
 
 import torch
 import torch.nn as nn
+from torch.utils.data import Dataset
 
 
 # --- Building Blocks ---
@@ -93,3 +96,28 @@ def make_training_pair(
     truth_coarse = volume_average(dns_velocity, ds_step)
     correction = truth_coarse - filtered_downsampled
     return filtered_downsampled, correction
+
+
+# --- Dataset ---
+
+class ClosureCNNDataset(Dataset):
+    """
+    Loads (nz, ny, nx, 3) numpy pairs from disk and transposes to channels-first
+    (3, nz, ny, nx) layout for Conv3d consumption.
+    """
+
+    def __init__(self, inputs: list[Path], targets: list[Path]) -> None:
+        self.inputs = inputs
+        self.targets = targets
+
+    def __len__(self) -> int:
+        return len(self.inputs)
+
+    def __getitem__(self, i: int) -> tuple[torch.Tensor, torch.Tensor]:
+        input_data = np.load(self.inputs[i]).astype(np.float32)
+        target_data = np.load(self.targets[i]).astype(np.float32)
+
+        input_data = np.transpose(input_data, (3, 0, 1, 2))
+        target_data = np.transpose(target_data, (3, 0, 1, 2))
+
+        return torch.from_numpy(input_data), torch.from_numpy(target_data)

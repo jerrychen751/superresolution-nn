@@ -4,11 +4,14 @@ Super-resolution CNN with spatial upsampling: coarse (e.g. 16^3) -> fine (e.g. 1
 Uses interpolate + conv (resize-conv) to avoid checkerboard artifacts from transposed convolutions.
 """
 
+from pathlib import Path
+
 import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import Dataset
 
 
 # --- Building Blocks ---
@@ -118,3 +121,29 @@ def make_training_pair(
     blurred = apply_gaussian_filter(dns_velocity, sigma=sigma)
     coarse = blurred[::ds_step, ::ds_step, ::ds_step, :]
     return coarse, dns_velocity
+
+
+# --- Dataset ---
+
+class UpsampleCNNDataset(Dataset):
+    """
+    Loads (nz, ny, nx, 3) numpy pairs from disk and transposes to channels-first
+    (3, nz, ny, nx) layout. Input and target may have different spatial shapes
+    since upsample_cnn predicts fine resolution from coarse input.
+    """
+
+    def __init__(self, inputs: list[Path], targets: list[Path]) -> None:
+        self.inputs = inputs
+        self.targets = targets
+
+    def __len__(self) -> int:
+        return len(self.inputs)
+
+    def __getitem__(self, i: int) -> tuple[torch.Tensor, torch.Tensor]:
+        input_data = np.load(self.inputs[i]).astype(np.float32)
+        target_data = np.load(self.targets[i]).astype(np.float32)
+
+        input_data = np.transpose(input_data, (3, 0, 1, 2))
+        target_data = np.transpose(target_data, (3, 0, 1, 2))
+
+        return torch.from_numpy(input_data), torch.from_numpy(target_data)

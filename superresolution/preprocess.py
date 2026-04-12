@@ -17,7 +17,7 @@ from hydra.core.config_store import ConfigStore
 from .config import SuperResolutionConfig
 
 cs = ConfigStore.instance()
-cs.store(name="config", node=SuperResolutionConfig)
+cs.store(name="base_config", node=SuperResolutionConfig)
 
 
 # Individual transforms
@@ -92,7 +92,7 @@ class NormalizationStats:
 
 
 # Full preprocessing pipeline
-@hydra.main(version_base=None, config_path="configs", config_name="config")
+@hydra.main(version_base=None, config_path="configs", config_name="cnn")
 def prepare_dataset(cfg: SuperResolutionConfig):
     # Resolve data directories
     if cfg.raw_data_dir:
@@ -126,8 +126,8 @@ def prepare_dataset(cfg: SuperResolutionConfig):
         print("All processed files already exist, skipping preprocessing.")
         return
 
-    # Select the make_training_pair function based on preprocessing mode
-    mode = cfg.preprocess.mode
+    # Select the make_training_pair function based on the active model
+    mode = cfg.model.name
     if mode == "cnn":
         from .models.cnn import make_training_pair
     elif mode == "upsample_cnn":
@@ -136,6 +136,8 @@ def prepare_dataset(cfg: SuperResolutionConfig):
         from .models.closure_cnn import make_training_pair
     elif mode == "fno":
         from .models.fno import make_training_pair
+    elif mode == "gnn":
+        from .models.gnn import make_training_pair
     else:
         raise ValueError(f"Unknown preprocess mode: {mode}")
 
