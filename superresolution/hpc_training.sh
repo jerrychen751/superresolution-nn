@@ -30,24 +30,25 @@ if [ -z "${MODEL:-}" ]; then
 fi
 echo "Model variant: $MODEL"
 
+# Code lives on NFS home; everything else lives on scratch (faster I/O, larger quota)
+PROJECT_DIR=$HOME/projects/pi-cnn
+SCRATCH=/storage/ice1/3/9/jchen3421
+CONDA_ENV=$SCRATCH/conda/envs/ai
+RAW_DIR=$SCRATCH/pi-cnn/data/raw
+PROCESSED_DIR=$SCRATCH/pi-cnn/data/processed_${MODEL}
+CHECKPOINTS_DIR=$SCRATCH/pi-cnn/checkpoints/${MODEL}
+
 # Environment
-source activate ai
-export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+export PATH=$CONDA_ENV/bin:$PATH
 
 # Diagnostics
 echo "Job $SLURM_JOB_ID started at $(date)"
 echo "Running on node: $(hostname)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
-# Code lives on NFS home; data lives on scratch (faster I/O)
-PROJECT_DIR=$HOME/projects/pi-cnn
-SCRATCH=/storage/ice1/3/9/jchen3421
-RAW_DIR=$SCRATCH/pi-cnn/data/raw
-PROCESSED_DIR=$SCRATCH/pi-cnn/data/processed_${MODEL}
-
 cd $PROJECT_DIR
 
-mkdir -p $RAW_DIR $PROCESSED_DIR
+mkdir -p $RAW_DIR $PROCESSED_DIR $CHECKPOINTS_DIR
 
 # Step 1: Download velocity cubes from JHTDB (shared across variants)
 if [ "${SKIP_DOWNLOAD:-0}" = "1" ]; then
@@ -72,7 +73,7 @@ export MASTER_ADDR MASTER_PORT
 
 # Step 3: Train model
 # Resolve torchrun's full path before srun, since srun spawns a new process
-# that may not inherit conda's PATH modifications.
+# that may not inherit the conda env's PATH modifications.
 TORCHRUN=$(which torchrun)
 echo "=== Step 3: Train (model=$MODEL) ==="
 srun $TORCHRUN \
@@ -84,6 +85,7 @@ srun $TORCHRUN \
     -m superresolution.train \
     --config-name=$MODEL \
     processed_data_dir=$PROCESSED_DIR \
+    checkpoints_dir=$CHECKPOINTS_DIR \
     train.batch_size=1 \
     train.num_workers=2
 
