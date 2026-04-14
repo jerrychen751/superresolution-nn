@@ -8,7 +8,7 @@
 #SBATCH --ntasks-per-node=1            # Stays 1; torchrun spawns child processes equal to number of GPUs (tasks = GPU ct)
 #SBATCH --cpus-per-task=5               # nproc_per_node * (num_workers + 1)
 #SBATCH --mem=32G
-#SBATCH --time=16:00:00                # wall-time limit (coe-gpu partition max)
+#SBATCH --time=08:00:00                # 2 gpus * 480 min = 960 gpu-min, coe-ice qos max per job
 #SBATCH --output=logs/%j.out           # stdout -> logs/<jobid>.out
 #SBATCH --error=logs/%j.err            # stderr -> logs/<jobid>.err
 
