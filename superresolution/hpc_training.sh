@@ -1,13 +1,14 @@
 #!/bin/bash
 
 #SBATCH --job-name=superres
-#SBATCH --partition=ice-bw-gpu
+#SBATCH --partition=coe-gpu
+#SBATCH --qos=coe-ice
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:rtx_pro_6000_blackwell:2  # Blackwell workstation GPU, 96GB VRAM each
+#SBATCH --gres=gpu:h200:2              # H200, 141GB HBM3e per GPU
 #SBATCH --ntasks-per-node=1            # Stays 1; torchrun spawns child processes equal to number of GPUs (tasks = GPU ct)
 #SBATCH --cpus-per-task=5               # nproc_per_node * (num_workers + 1)
 #SBATCH --mem=32G
-#SBATCH --time=18:00:00                # wall-time limit (ice-bw-gpu partition max)
+#SBATCH --time=16:00:00                # wall-time limit (coe-gpu partition max)
 #SBATCH --output=logs/%j.out           # stdout -> logs/<jobid>.out
 #SBATCH --error=logs/%j.err            # stderr -> logs/<jobid>.err
 
