@@ -31,6 +31,10 @@ $PIP install \
     torch torchvision torchaudio \
     --extra-index-url https://download.pytorch.org/whl/cu126
 
+# PyG for the gnn model variant; installed after torch since its setup.py inspects the torch version.
+# We only use GCNConv and Data, which are pure-Python in modern PyG, so no torch-scatter wheels needed.
+$PIP install torch-geometric
+
 # Useful for exploratory work and notebooks
 $PIP install \
     pandas h5py netCDF4 xarray \
