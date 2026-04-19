@@ -1,5 +1,6 @@
 defaults:
   - default
+  - env: local
   - _self_
 
 model:
@@ -8,3 +9,6 @@ model:
     _target_: superresolution.models.cnn.SuperResolutionCNN
     hidden_channels: 32
     num_blocks: 4
+
+inference:
+  rel_weights_path: /weights/cnn_epoch_100.pt

@@ -1,5 +1,6 @@
 defaults:
   - default
+  - env: local
   - _self_
 
 model:

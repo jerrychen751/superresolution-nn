@@ -13,11 +13,6 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 import hydra
-from hydra.core.config_store import ConfigStore
-from .config import SuperResolutionConfig
-
-cs = ConfigStore.instance()
-cs.store(name="base_config", node=SuperResolutionConfig)
 
 
 # Individual transforms
@@ -93,17 +88,9 @@ class NormalizationStats:
 
 # Full preprocessing pipeline
 @hydra.main(version_base=None, config_path="configs", config_name="cnn")
-def prepare_dataset(cfg: SuperResolutionConfig):
-    # Resolve data directories
-    if cfg.raw_data_dir:
-        raw_dir = Path(cfg.raw_data_dir)
-    else:
-        raw_dir = Path(__file__).resolve().parent / "data" / "raw"
-
-    if cfg.processed_data_dir:
-        processed_dir = Path(cfg.processed_data_dir)
-    else:
-        processed_dir = Path(__file__).resolve().parent / "data" / "processed"
+def prepare_dataset(cfg):
+    raw_dir = Path(cfg.raw_data_dir)
+    processed_dir = Path(cfg.processed_data_dir)
     processed_dir.mkdir(parents=True, exist_ok=True)
 
     raw_files = sorted(raw_dir.glob("velocity_t*.npy"))

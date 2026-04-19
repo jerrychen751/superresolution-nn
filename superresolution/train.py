@@ -14,12 +14,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 import hydra.utils
 import hydra
-from hydra.core.config_store import ConfigStore
-from .config import SuperResolutionConfig
-
-
-cs = ConfigStore.instance()
-cs.store(name="base_config", node=SuperResolutionConfig)
 
 
 def _get_data_classes(model_name: str):
@@ -66,7 +60,7 @@ def _unpack_batch(batch, device, is_graph: bool):
     return inputs, targets, inputs.size(0)
 
 @hydra.main(version_base=None, config_path="configs", config_name="cnn")
-def train_eval(cfg: SuperResolutionConfig):
+def train_eval(cfg):
     using_ddp = int(os.getenv("WORLD_SIZE", 1)) > 1
     if using_ddp:
         dist.init_process_group("nccl")
@@ -78,26 +72,20 @@ def train_eval(cfg: SuperResolutionConfig):
         else:
             device = torch.device('cpu')
 
-    # Resolve data and output directories
-    base_dir = Path(__file__).resolve().parent
+    processed_dir = Path(cfg.processed_data_dir)
 
-    if cfg.processed_data_dir:
-        processed_dir = Path(cfg.processed_data_dir)
-    else:
-        processed_dir = base_dir / "data" / "processed"
-
-    if cfg.checkpoints_dir:
-        checkpoints_dir = Path(cfg.checkpoints_dir)
-    else:
-        checkpoints_dir = base_dir / "checkpoints" / cfg.model.name
+    checkpoints_dir = Path(cfg.checkpoints_dir)
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
+
+    weights_dir = Path(cfg.weights_dir)
+    weights_dir.mkdir(parents=True, exist_ok=True)
 
     # Per-epoch loss log: one CSV per run, written only by the primary process.
     is_primary = not using_ddp or dist.get_rank() == 0
     csv_file = None
     csv_writer = None
     if is_primary:
-        logs_dir = base_dir / "logs" / cfg.model.name
+        logs_dir = Path(cfg.logs_dir)
         logs_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         csv_path = logs_dir / f"train_{timestamp}.csv"
@@ -181,6 +169,7 @@ def train_eval(cfg: SuperResolutionConfig):
     criterion = torch.nn.MSELoss() # (prediction - target)^2
 
     # Training loop
+    best_loss = float('inf') # looking at test loss
     for epoch in range(1, cfg.train.epochs + 1):
         # Sampler uses current epoch as a seed for generating partitions
         if using_ddp:
@@ -239,20 +228,23 @@ def train_eval(cfg: SuperResolutionConfig):
         # Save the model at checkpoints, as well as loss stats
         if epoch % 50 == 0:
             if not using_ddp or dist.get_rank() == 0:
-                checkpoint = {
-                    "epoch": epoch,
-                    "model": model.module.state_dict() if using_ddp else model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "lr_scheduler": scheduler.state_dict(),
-                    "train_loss": train_loss,
-                    "test_loss": test_loss
-                }
-                torch.save(checkpoint, checkpoints_dir / f"checkpoint_epoch_{epoch}.pt")
+                state_dict = model.module.state_dict() if using_ddp else model.state_dict()
+                torch.save(state_dict, checkpoints_dir / f"checkpoint_epoch_{epoch}.pth")
 
             if using_ddp:
                 # Block other processes until all reach this point; all ranks should hit this
                 dist.barrier()
 
+        # Save the best epoch's weights
+        if test_loss < best_loss:
+            best_loss = test_loss
+
+            if not using_ddp or dist.get_rank() == 0:
+                state_dict = model.module.state_dict() if using_ddp else model.state_dict()
+                torch.save(state_dict, weights_dir / "weights.pth")
+
+            if using_ddp:
+                dist.barrier()
             
         scheduler.step() # adjust LR before the next epoch
 

@@ -1,0 +1,5 @@
+# @package _global_
+# Merge contents at the top level of the composed config instead of under the "env" key.
+# Resolves to the directory where the python command was launched from.
+# Convention: run from the repo root, so storage_root = repo root.
+storage_root: ${hydra:runtime.cwd}

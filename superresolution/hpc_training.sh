@@ -31,13 +31,10 @@ if [ -z "${MODEL:-}" ]; then
 fi
 echo "Model variant: $MODEL"
 
-# Code lives on NFS home; everything else lives on scratch (faster I/O, larger quota)
+# Code lives on NFS home; data/checkpoints/weights/logs live on scratch (configured via env=hpc).
+# $SCRATCH is set automatically by PACE; env/hpc.yaml interpolates storage_root off it.
 PROJECT_DIR=$HOME/projects/pi-cnn
-SCRATCH=/storage/ice1/3/9/jchen3421
 CONDA_ENV=$SCRATCH/conda/envs/ai
-RAW_DIR=$SCRATCH/pi-cnn/data/raw
-PROCESSED_DIR=$SCRATCH/pi-cnn/data/processed_${MODEL}
-CHECKPOINTS_DIR=$SCRATCH/pi-cnn/checkpoints/${MODEL}
 
 # Environment
 export PATH=$CONDA_ENV/bin:$PATH
@@ -49,23 +46,17 @@ nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 cd $PROJECT_DIR
 
-mkdir -p $RAW_DIR $PROCESSED_DIR $CHECKPOINTS_DIR
-
 # Step 1: Download velocity cubes from JHTDB (shared across variants)
 if [ "${SKIP_DOWNLOAD:-0}" = "1" ]; then
     echo "=== Step 1: Download (SKIPPED) ==="
 else
     echo "=== Step 1: Download ==="
-    python -m superresolution.download \
-        raw_data_dir=$RAW_DIR
+    python -m superresolution.download env=hpc
 fi
 
 # Step 2: Preprocess
 echo "=== Step 2: Preprocess (model=$MODEL) ==="
-python -m superresolution.preprocess \
-    --config-name=$MODEL \
-    raw_data_dir=$RAW_DIR \
-    processed_data_dir=$PROCESSED_DIR
+python -m superresolution.preprocess --config-name=$MODEL env=hpc
 
 # Multi-node rendezvous: pick first allocated node as master
 MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
@@ -85,8 +76,7 @@ srun $TORCHRUN \
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
     -m superresolution.train \
     --config-name=$MODEL \
-    processed_data_dir=$PROCESSED_DIR \
-    checkpoints_dir=$CHECKPOINTS_DIR \
+    env=hpc \
     train.batch_size=1 \
     train.num_workers=2
 

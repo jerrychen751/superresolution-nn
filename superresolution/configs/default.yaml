@@ -1,10 +1,9 @@
 defaults:
-  - base_config
   - _self_
 
 download:
   jhtdb_dataset: isotropic1024coarse
-  jhtdb_cache_dir: ./jhtdb_output
+  jhtdb_cache_dir: ${storage_root}/jhtdb_cache
   nx: 128
   ny: 128
   nz: 128
@@ -25,8 +24,10 @@ train:
   batch_size: 4
   num_workers: 4
 
-raw_data_dir: null
-processed_data_dir: null
-checkpoints_dir: null
-weights_dir: null
-outputs_dir: null
+# All artifact paths derive from storage_root, which is set by the env config group (env/local.yaml or env/hpc.yaml).
+raw_data_dir: ${storage_root}/data/raw
+processed_data_dir: ${storage_root}/data/processed/${model.name}
+checkpoints_dir: ${storage_root}/checkpoints/${model.name}
+weights_dir: ${storage_root}/weights/${model.name}
+outputs_dir: ${storage_root}/outputs/${model.name}
+logs_dir: ${storage_root}/logs/${model.name}
