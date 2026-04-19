@@ -9,34 +9,59 @@ from torch_geometric.nn import GCNConv
 from torch.utils.data import Dataset
 
 class GNN(nn.Module):
-    def __init__(self, hidden_channels: int = 32) -> None:
+    def __init__(self, hidden_channels=64, num_blocks=4):
         super().__init__()
-        self.conv1 = GCNConv(3, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, hidden_channels)
-        self.conv3 = GCNConv(hidden_channels, 3)
 
-        self.bn1 = nn.BatchNorm1d(hidden_channels)
-        self.bn2 = nn.BatchNorm1d(hidden_channels)
+        # Input projection
+        self.input_proj = GCNConv(3, hidden_channels)
+        self.bn_in = nn.BatchNorm1d(hidden_channels)
 
-    def forward(self, data: Data) -> torch.Tensor:
+        # Residual blocks
+        self.blocks = nn.ModuleList([
+            GNNResBlock(hidden_channels) for _ in range(num_blocks)
+        ])
+
+        # Output projection
+        self.output_proj = GCNConv(hidden_channels, 3)
+
+    def forward(self, data: Data):
         x, edge_index = data.x, data.edge_index
 
-        # Layer 1
-        x = self.conv1(x, edge_index)
-        x = self.bn1(x)
+        # Input
+        x = self.input_proj(x, edge_index)
+        x = self.bn_in(x)
         x = F.relu(x)
 
-        prev_x = x
+        # Residual blocks
+        for block in self.blocks:
+            x = block(x, edge_index)
 
-        # Layer 2
-        x = self.conv2(x, edge_index)
-        x = self.bn2(x)
-        x = x + prev_x
-        x = F.relu(x)
+        # Output
+        x = self.output_proj(x, edge_index)
 
-        # Output layer (no BN, no ReLU)
-        x = self.conv3(x, edge_index)
+        # Residual learning
         return x
+    
+class GNNResBlock(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv1 = GCNConv(channels, channels)
+        self.bn1 = nn.BatchNorm1d(channels)
+        self.conv2 = GCNConv(channels, channels)
+        self.bn2 = nn.BatchNorm1d(channels)
+
+    def forward(self, x, edge_index):
+        identity = x
+
+        out = self.conv1(x, edge_index)
+        out = self.bn1(out)
+        out = F.relu(out)
+
+        out = self.conv2(out, edge_index)
+        out = self.bn2(out)
+
+        out = out + identity
+        return F.relu(out)
 
 def make_training_pair(
     dns_velocity: np.ndarray, # (nz, ny, nx, 3)

@@ -6,4 +6,5 @@ model:
   name: gnn
   params:
     _target_: superresolution.models.gnn.GNN
-    hidden_channels: 32
+    hidden_channels: 64
+    num_blocks: 4
