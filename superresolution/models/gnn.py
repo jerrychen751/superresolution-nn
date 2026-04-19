@@ -15,13 +15,27 @@ class GNN(nn.Module):
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
         self.conv3 = GCNConv(hidden_channels, 3)
 
+        self.bn1 = nn.BatchNorm1d(hidden_channels)
+        self.bn2 = nn.BatchNorm1d(hidden_channels)
+
     def forward(self, data: Data) -> torch.Tensor:
         x, edge_index = data.x, data.edge_index
 
-        x = F.relu(self.conv1(x, edge_index))
-        x = F.relu(self.conv2(x, edge_index))
-        x = self.conv3(x, edge_index)
+        # Layer 1
+        x = self.conv1(x, edge_index)
+        x = self.bn1(x)
+        x = F.relu(x)
 
+        prev_x = x
+
+        # Layer 2
+        x = self.conv2(x, edge_index)
+        x = self.bn2(x)
+        x = x + prev_x
+        x = F.relu(x)
+
+        # Output layer (no BN, no ReLU)
+        x = self.conv3(x, edge_index)
         return x
 
 def make_training_pair(
