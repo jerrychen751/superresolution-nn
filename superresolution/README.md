@@ -153,10 +153,11 @@ python -m superresolution.inference --config-name=upsample_cnn env=hpc \
 
 Look at `models/cnn.py` as the reference — everything below is the pattern it follows.
 
-1. Create `superresolution/models/<name>.py` with three things in it:
+1. Create `superresolution/models/<name>.py` with four things in it:
+   - the `nn.Module` itself
    - a `<Name>Dataset(Dataset)` class that loads `(input, target)` pairs and converts to whatever tensor or graph format the model expects
    - a `make_training_pair(dns_velocity, sigma, ds_step, **kwargs)` function — `preprocess.py` imports this dynamically
-   - the `nn.Module` itself
+   - a `build_inference_fn(model, sample_shape, device)` factory that returns a `predict(input_array) -> prediction_array` closure — `inference.py` imports this dynamically
 2. Create `superresolution/configs/<name>.yaml`:
 
    ```yaml
@@ -171,7 +172,10 @@ Look at `models/cnn.py` as the reference — everything below is the pattern it 
        _target_: superresolution.models.<name>.<ModelClass>
        # constructor kwargs
    ```
-3. Add a branch to `_get_data_classes` in `train.py` mapping `<name>` to your Dataset (and to a non-default DataLoader if needed — the GNN branch shows this pattern).
+3. Wire up the three dispatch points:
+   - `_get_data_classes` in `train.py` — return your Dataset (and a non-default DataLoader if needed, as GNN does)
+   - `_get_build_inference_fn` in `inference.py` — return your `build_inference_fn`
+   - the import block in `preprocess.py` — import your `make_training_pair`
 
 ---
 

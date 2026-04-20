@@ -135,3 +135,22 @@ class GNNDataset(Dataset):
         y = torch.from_numpy(target_grid.reshape(-1, 3))
 
         return Data(x=x, y=y, edge_index=self.edge_index)
+
+
+# --- Inference ---
+
+def build_inference_fn(model: nn.Module, sample_shape: tuple, device: torch.device):
+    """
+    Return a callable that maps one on-disk input array to a prediction in the
+    same on-disk layout. Builds edge_index once in the closure since the graph
+    topology is identical across every sample.
+    """
+    nz, ny, nx, _ = sample_shape
+    edge_index = _build_grid_edges(nz, ny, nx).to(device)
+
+    def predict(input_array: np.ndarray) -> np.ndarray:
+        x = torch.from_numpy(input_array.reshape(-1, 3)).to(device)
+        data = Data(x=x, edge_index=edge_index)
+        pred = model(data).cpu().numpy()
+        return pred.reshape(input_array.shape)
+    return predict

@@ -357,3 +357,27 @@ class FNODataset(Dataset):
         input_data = np.concatenate([input_data, grid], axis=0)
 
         return torch.from_numpy(input_data), torch.from_numpy(target_data)
+
+
+# --- Inference ---
+
+def build_inference_fn(model: nn.Module, sample_shape: tuple, device: torch.device):
+    """
+    Return a callable that maps one on-disk input array to a prediction in the
+    same on-disk layout. Builds the normalized coordinate grid once in the
+    closure so the per-sample call stays cheap.
+    """
+    nz, ny, nx, _ = sample_shape
+    gz = np.linspace(0, 1, nz, dtype=np.float32)
+    gy = np.linspace(0, 1, ny, dtype=np.float32)
+    gx = np.linspace(0, 1, nx, dtype=np.float32)
+    grid_z, grid_y, grid_x = np.meshgrid(gz, gy, gx, indexing="ij")
+    coord_grid = np.stack([grid_z, grid_y, grid_x], axis=0)
+
+    def predict(input_array: np.ndarray) -> np.ndarray:
+        x = np.transpose(input_array, (3, 0, 1, 2))
+        x = np.concatenate([x, coord_grid], axis=0)
+        x = torch.from_numpy(x).unsqueeze(0).to(device)
+        pred = model(x)[0].cpu().numpy()
+        return np.transpose(pred, (1, 2, 3, 0))
+    return predict
