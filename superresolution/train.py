@@ -91,19 +91,23 @@ def train_eval(cfg):
         csv_path = logs_dir / f"train_{timestamp}.csv"
         csv_file = csv_path.open("w", newline="")
         csv_writer = csv.writer(csv_file)
-        csv_writer.writerow(["epoch", "train_loss", "test_loss", "learning_rate"])
+        csv_writer.writerow(["epoch", "train_loss", "val_loss", "learning_rate"])
         print(f"Logging per-epoch stats to {csv_path}", flush=True)
 
-    # Construct Datasets
-    input_fps = sorted(processed_dir.glob('input_t*.npy'))
-    target_fps = sorted(processed_dir.glob('target_t*.npy'))
-    n_train = int(cfg.train.train_ratio * len(input_fps))
+    # Construct Datasets from pre-split subdirs written by preprocess.py
+    train_dir = processed_dir / "train"
+    val_dir = processed_dir / "val"
+
+    train_input_fps = sorted(train_dir.glob("input_t*.npy"))
+    train_target_fps = sorted(train_dir.glob("target_t*.npy"))
+    val_input_fps = sorted(val_dir.glob("input_t*.npy"))
+    val_target_fps = sorted(val_dir.glob("target_t*.npy"))
 
     DatasetCls, LoaderCls = _get_data_classes(cfg.model.name)
     is_graph = cfg.model.name == "gnn"
 
-    train_ds = DatasetCls(input_fps[:n_train], target_fps[:n_train])
-    test_ds = DatasetCls(input_fps[n_train:], target_fps[n_train:])
+    train_ds = DatasetCls(train_input_fps, train_target_fps)
+    val_ds = DatasetCls(val_input_fps, val_target_fps)
 
     # Wrap Datasets in DataLoader
     if using_ddp:
@@ -119,16 +123,16 @@ def train_eval(cfg):
             num_workers=cfg.train.num_workers,
             sampler=train_sampler # stores a reference
         )
-        test_sampler = DistributedSampler(
-            dataset=test_ds,
+        val_sampler = DistributedSampler(
+            dataset=val_ds,
             shuffle=False
         )
-        test_loader = LoaderCls(
-            dataset=test_ds,
+        val_loader = LoaderCls(
+            dataset=val_ds,
             batch_size=cfg.train.batch_size,
             pin_memory=True,
             num_workers=cfg.train.num_workers,
-            sampler=test_sampler
+            sampler=val_sampler
         )
     else:
         train_loader = LoaderCls(
@@ -137,8 +141,8 @@ def train_eval(cfg):
             shuffle=True, # don't always pair up same samples
             num_workers=cfg.train.num_workers,
         )
-        test_loader = LoaderCls(
-            dataset=test_ds,
+        val_loader = LoaderCls(
+            dataset=val_ds,
             batch_size=cfg.train.batch_size,
             shuffle=False, # deterministic pairing
             num_workers=cfg.train.num_workers,
@@ -169,7 +173,7 @@ def train_eval(cfg):
     criterion = torch.nn.MSELoss() # (prediction - target)^2
 
     # Training loop
-    best_loss = float('inf') # looking at test loss
+    best_loss = float('inf') # looking at val loss
     for epoch in range(1, cfg.train.epochs + 1):
         # Sampler uses current epoch as a seed for generating partitions
         if using_ddp:
@@ -199,30 +203,30 @@ def train_eval(cfg):
         else:
             train_loss /= len(train_ds) # average over all training samples
 
-        # Track validation/test loss
+        # Track validation loss
         model.eval()
-        test_loss = 0.0
+        val_loss = 0.0
         with torch.no_grad():
-            for batch in test_loader:
+            for batch in val_loader:
                 model_input, targets, bs = _unpack_batch(batch, device, is_graph)
                 loss = criterion(model(model_input), targets)
-                test_loss += loss.item() * bs
-        
+                val_loss += loss.item() * bs
+
         if using_ddp:
-            local_test_loss = torch.tensor(test_loss, device=device)
-            dist.all_reduce(local_test_loss, dist.ReduceOp.SUM)
-            test_loss = local_test_loss.item() / len(test_ds)
+            local_val_loss = torch.tensor(val_loss, device=device)
+            dist.all_reduce(local_val_loss, dist.ReduceOp.SUM)
+            val_loss = local_val_loss.item() / len(val_ds)
         else:
-            test_loss /= len(test_ds)
+            val_loss /= len(val_ds)
 
         # Per-epoch log: stdout (for slurm capture) + CSV (for later analysis).
         if is_primary:
             current_lr = optimizer.param_groups[0]["lr"]
             print(
-                f"epoch {epoch}/{cfg.train.epochs}  train={train_loss:.4e}  test={test_loss:.4e}  lr={current_lr:.2e}",
+                f"epoch {epoch}/{cfg.train.epochs}  train={train_loss:.4e}  val={val_loss:.4e}  lr={current_lr:.2e}",
                 flush=True,
             )
-            csv_writer.writerow([epoch, train_loss, test_loss, current_lr])
+            csv_writer.writerow([epoch, train_loss, val_loss, current_lr])
             csv_file.flush()
 
         # Save the model at checkpoints, as well as loss stats
@@ -236,8 +240,8 @@ def train_eval(cfg):
                 dist.barrier()
 
         # Save the best epoch's weights
-        if test_loss < best_loss:
-            best_loss = test_loss
+        if val_loss < best_loss:
+            best_loss = val_loss
 
             if not using_ddp or dist.get_rank() == 0:
                 state_dict = model.module.state_dict() if using_ddp else model.state_dict()

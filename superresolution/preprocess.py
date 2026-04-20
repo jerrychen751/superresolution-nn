@@ -49,49 +49,11 @@ def volume_average(velocity: np.ndarray, ds_step: int) -> np.ndarray:
     return reshaped.mean(axis=(1, 3, 5))
 
 
-# Normalization
-
-class NormalizationStats:
-
-    def __init__(self):
-        self.mean: np.ndarray | None = None  # shape: (3,)
-        self.std: np.ndarray | None = None   # shape: (3,)
-
-    def fit(self, data_list):
-        # Flatten each cube to (N^3, 3), then stack along axis 0
-        all_data = np.concatenate(
-            [d.reshape(-1, 3) for d in data_list], axis=0,
-        )
-        self.mean = all_data.mean(axis=0).astype(np.float32)
-        # Guard against division by zero for constant channels
-        std = all_data.std(axis=0).astype(np.float32)
-        self.std = np.maximum(std, 1e-8)
-
-    def normalize(self, data):
-        return (data - self.mean) / self.std
-
-    def denormalize(self, data):
-        return data * self.std + self.mean
-
-    def save(self, path):
-        assert self.mean is not None and self.std is not None
-        np.savez(path, mean=self.mean, std=self.std)
-
-    @classmethod
-    def load(cls, path):
-        stats = cls()
-        data = np.load(path)
-        stats.mean = data["mean"]
-        stats.std = data["std"]
-        return stats
-
-
 # Full preprocessing pipeline
 @hydra.main(version_base=None, config_path="configs", config_name="cnn")
 def prepare_dataset(cfg):
     raw_dir = Path(cfg.raw_data_dir)
     processed_dir = Path(cfg.processed_data_dir)
-    processed_dir.mkdir(parents=True, exist_ok=True)
 
     raw_files = sorted(raw_dir.glob("velocity_t*.npy"))
     if not raw_files:
@@ -100,14 +62,29 @@ def prepare_dataset(cfg):
 
     print(f"Found {len(raw_files)} raw cubes")
 
+    # Chronological train/val/test split. Test gets the remainder so rounding never loses a file.
+    ratio_sum = cfg.preprocess.train_ratio + cfg.preprocess.val_ratio + cfg.preprocess.test_ratio
+    if abs(ratio_sum - 1.0) > 1e-6:
+        raise ValueError(f"preprocess split ratios must sum to 1.0, got {ratio_sum}")
+    n = len(raw_files)
+    n_train = int(cfg.preprocess.train_ratio * n)
+    n_val = int(cfg.preprocess.val_ratio * n)
+    splits = {
+        "train": raw_files[:n_train],
+        "val": raw_files[n_train:n_train + n_val],
+        "test": raw_files[n_train + n_val:],
+    }
+    for split_name, split_files in splits.items():
+        (processed_dir / split_name).mkdir(parents=True, exist_ok=True)
+        print(f"  {split_name}: {len(split_files)} files")
+
     # Check if all processed outputs already exist
     expected = []
-    for fp in raw_files:
-        t_str = fp.stem.split("_t")[1]
-        expected.append(processed_dir / f"input_t{t_str}.npy")
-        expected.append(processed_dir / f"target_t{t_str}.npy")
-    expected.append(processed_dir / "input_stats.npz")
-    expected.append(processed_dir / "target_stats.npz")
+    for split_name, split_files in splits.items():
+        for fp in split_files:
+            t_str = fp.stem.split("_t")[1]
+            expected.append(processed_dir / split_name / f"input_t{t_str}.npy")
+            expected.append(processed_dir / split_name / f"target_t{t_str}.npy")
 
     if all(p.exists() for p in expected):
         print("All processed files already exist, skipping preprocessing.")
@@ -128,53 +105,27 @@ def prepare_dataset(cfg):
     else:
         raise ValueError(f"Unknown preprocess mode: {mode}")
 
-    # Pass 1: build pairs
-    inputs = []
-    targets = []
-    time_labels = []
+    for split_name, split_files in splits.items():
+        split_dir = processed_dir / split_name
+        for fp in split_files:
+            t_str = fp.stem.split("_t")[1]
 
-    for fp in raw_files:
-        t_str = fp.stem.split("_t")[1]
-        time_labels.append(t_str)
+            print(f"[preprocess] {split_name}/{fp.name}...", end=" ", flush=True)
+            fine = np.load(fp).astype(np.float32)
+            coarse, target = make_training_pair(
+                fine,
+                sigma=cfg.preprocess.sigma,
+                ds_step=cfg.preprocess.downsample_step,
+                spline_order=cfg.preprocess.spline_interpolation_order,
+            )
+            for name, arr in [("input", coarse), ("target", target)]:
+                out = split_dir / f"{name}_t{t_str}.npy"
+                tmp = split_dir / f"{name}_t{t_str}.tmp.npy"
+                np.save(tmp, arr)
+                tmp.rename(out)
+            print(f"target range: [{target.min():.4f}, {target.max():.4f}]")
 
-        print(f"[preprocess] {fp.name}...", end=" ", flush=True)
-        fine = np.load(fp).astype(np.float32)
-        coarse, target = make_training_pair(
-            fine,
-            sigma=cfg.preprocess.sigma,
-            ds_step=cfg.preprocess.downsample_step,
-            spline_order=cfg.preprocess.spline_interpolation_order,
-        )
-        inputs.append(coarse)
-        targets.append(target)
-        print(
-            f"target range: [{target.min():.4f}, {target.max():.4f}]"
-        )
-
-    # Pass 2: normalize and save
-    input_stats = NormalizationStats()
-    input_stats.fit(inputs)
-    target_stats = NormalizationStats()
-    target_stats.fit(targets)
-
-    print(f"Input stats — mean: {input_stats.mean}, std: {input_stats.std}")
-    print(f"Target stats — mean: {target_stats.mean}, std: {target_stats.std}")
-
-    for i, t_str in enumerate(time_labels):
-        inp_norm = input_stats.normalize(inputs[i])
-        tgt_norm = target_stats.normalize(targets[i])
-        for name, arr in [("input", inp_norm), ("target", tgt_norm)]:
-            out = processed_dir / f"{name}_t{t_str}.npy"
-            tmp = processed_dir / f"{name}_t{t_str}.tmp.npy"
-            np.save(tmp, arr)
-            tmp.rename(out)
-
-    for name, stats in [("input_stats", input_stats), ("target_stats", target_stats)]:
-        out = processed_dir / f"{name}.npz"
-        tmp = processed_dir / f"{name}.tmp.npz"
-        stats.save(tmp)
-        tmp.rename(out)
-    print(f"Saved {len(time_labels)} pairs + stats to {processed_dir}")
+    print(f"Saved {n} pairs to {processed_dir} (train/val/test)")
 
 
 if __name__ == "__main__":

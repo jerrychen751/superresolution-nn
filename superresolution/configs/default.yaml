@@ -15,10 +15,12 @@ preprocess:
   sigma: 1.0
   downsample_step: 4
   spline_interpolation_order: 3
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
 
 train:
   epochs: 1000
-  train_ratio: 0.8
   learning_rate: 0.001
   eta_min: 1.0e-6
   batch_size: 4
@@ -27,6 +29,7 @@ train:
 # All artifact paths derive from storage_root, which is set by the env config group (env/local.yaml or env/hpc.yaml).
 raw_data_dir: ${storage_root}/data/raw
 processed_data_dir: ${storage_root}/data/processed/${model.name}
+inference_data_dir: ${processed_data_dir}/test
 checkpoints_dir: ${storage_root}/checkpoints/${model.name}
 weights_dir: ${storage_root}/weights/${model.name}
 outputs_dir: ${storage_root}/outputs/${model.name}

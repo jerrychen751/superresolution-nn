@@ -92,7 +92,7 @@ if epoch % 50 == 0:
             "optimizer": optimizer.state_dict(),
             "lr_scheduler": scheduler.state_dict(),
             "train_loss": train_loss,
-            "test_loss": test_loss
+            "val_loss": val_loss
         }
         torch.save(checkpoint, f"checkpoint_epoch_{epoch}.pt")
 
