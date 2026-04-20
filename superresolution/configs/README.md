@@ -1,5 +1,4 @@
-### Introduction
-This project uses [Hydra](https://hydra.cc/) (developed by Meta) as its experiment configuration manager. Hydra composes nested YAML files into a single runtime config object and supports command-line overrides for quick experimentation.
+This project uses [Hydra](https://hydra.cc/) (from Meta) to manage experiment configuration. It composes nested YAML files into one runtime config object and lets you override individual fields from the CLI — handy for quick experimentation.
 
 Install:
 ```
@@ -106,8 +105,8 @@ To see exactly what Hydra will pass to your code — with all interpolations res
 python -m superresolution.train --config-name=cnn --cfg job --resolve
 ```
 
-This prints the final config and exits without running. Useful for sanity-checking overrides and env selection.
+This prints the final config and exits without running anything. Handy for sanity-checking overrides before you commit to a real run.
 
-### Working dir caveat
+### Hydra changes your working directory
 
-Hydra automatically `cd`s into a timestamped `outputs/` directory at startup so each run's auto-generated logs are isolated. Inside any `@hydra.main`-decorated function, always resolve file paths via the config (e.g., `Path(cfg.checkpoints_dir)`) — relative paths will point to the wrong location.
+At startup, Hydra `cd`s into a timestamped `outputs/YYYY-MM-DD/HH-MM-SS/` so each run's auto-generated logs stay isolated. Inside any `@hydra.main`-decorated function, always resolve file paths via the config (e.g. `Path(cfg.checkpoints_dir)`) — relative paths will resolve against the timestamped dir, not where you ran the command from.

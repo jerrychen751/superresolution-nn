@@ -1,7 +1,7 @@
 ### Overview
 PyTorch DDP (Distributed Data Parallel) is a method of partitioning the dataset so that training occurs on multiple GPUs, offering a near-linear speedup in training time.
 
-Essentially, the same model weights are loaded on multiple GPUs. The convention is one process per GPU, where each process has access to the full training dataset. A `DistributedSampler` object partitions the indices so that each GPU gets an even number of samples.
+The same model weights are loaded on multiple GPUs. The convention is one process per GPU, where each process has access to the full training dataset. A `DistributedSampler` object partitions the indices so that each GPU gets an even number of samples.
 
 Each GPU runs forward and backward independently, producing its own gradients. The gradients are then averaged across each GPU (so they all become identical) and then each calls `optimizer.step()` to update model parameters using learning rate / gradient.
 
@@ -33,7 +33,7 @@ There are 3 main new imports:
 ```python
 from torch.utils.data import Dataset, DataLoader, DistributedSampler # Partitions dataset
 import torch.distributed as dist # Main API for distributed computing
-from torch.nn.parallel import DistributedDataParalel as DDP # model wrapper that syncs gradients
+from torch.nn.parallel import DistributedDataParallel as DDP # model wrapper that syncs gradients
 ```
 
 ```python
@@ -45,7 +45,7 @@ if using_ddp:
 ```
 
 ##### Use DistributedSampler
-Along with `DataLoader` objects, we initialize `DistribuedSampler` objects for train/test datasets, with shuffling for training.
+Along with `DataLoader` objects, we initialize `DistributedSampler` objects for train/val datasets, with shuffling for training.
 
 ```python
 train_sampler = DistributedSampler(dataset=train_ds, shuffle=True)
@@ -94,7 +94,7 @@ if epoch % 50 == 0:
             "train_loss": train_loss,
             "val_loss": val_loss
         }
-        torch.save(checkpoint, f"checkpoint_epoch_{epoch}.pt")
+        torch.save(checkpoint, f"checkpoint_epoch_{epoch}.pth")
 
     if using_ddp:
         # Block other processes until all reach this point; all ranks should hit this

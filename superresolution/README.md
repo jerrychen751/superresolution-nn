@@ -10,34 +10,9 @@ u_corrected = u_coarse_upsampled + model(u_coarse_upsampled)
 
 `upsample_cnn` learns a direct coarse → fine mapping instead. `closure_cnn` predicts a subgrid-scale closure at coarse resolution.
 
----
+## If you're new
 
-## New-member checklist
-
-Follow these in order. Each step links to the detailed section below.
-
-**One-time setup**
-
-1. [Prerequisites](#prerequisites) — GT PACE account, JHTDB token, SSH alias
-2. [PACE HPC setup](#pace-hpc-setup-one-time-per-user) — conda env on scratch, clone repo, update hardcoded paths
-3. [Local setup](#local-setup-dev--inference) — only needed if you want to run inference or debug locally
-
-**First training run**
-
-4. [Data acquisition](#first-time-data-acquisition) — one `download` + one `preprocess` per model variant
-5. [Training](#training) — `sbatch --export=MODEL=<name> hpc_training.sh`
-6. [Monitoring](#monitoring) — `squeue`, tail the Slurm stdout, tail the per-epoch CSV
-
-**After training**
-
-7. [Inference](#inference) — predictions on the held-out test split
-8. Copy `weights.pth` back to your local machine for visualization / analysis
-
-**Extending the pipeline**
-
-9. [Adding a new model variant](#adding-a-new-model-variant) — three-file pattern (model, config, dispatch branch)
-
----
+One-time: get your accounts set up, install conda on PACE scratch, clone the repo, and plug your scratch path into two HPC config files. Then for each model, `download` once (ever) and `preprocess` once, then sbatch a training job. When that lands, run inference on PACE or copy `weights.pth` down and run it locally. Sections below walk through each piece.
 
 ## Prerequisites
 
@@ -56,7 +31,7 @@ Host pace
 
 ## Local setup (dev / inference)
 
-Local is for running inference against downloaded weights or short debug training runs. Full training happens on HPC.
+Local setup is only for running inference against downloaded weights or short debug runs on a tiny sample. All real training stays on HPC.
 
 ```bash
 git clone <repo-url> pi-cnn
@@ -117,11 +92,11 @@ ln -s /storage/ice1/3/9/<YOURUSER>/superresolution/outputs     outputs
 ln -s /storage/ice1/3/9/<YOURUSER>/superresolution/logs        logs-csv
 ```
 
-The `logs-csv` alias avoids colliding with the existing `superresolution/logs/` directory, which captures Slurm stdout (separate from the per-epoch CSVs that live at `$storage_root/logs/`).
+The `logs-csv` alias is there to avoid colliding with the `superresolution/logs/` directory already in the repo — that one holds Slurm stdout, and the per-epoch CSVs live separately under `$storage_root/logs/`.
 
-## First-time data acquisition
+## Getting the data
 
-Run from PACE, inside the active conda env:
+On PACE, with the conda env activated:
 
 ```bash
 cd $HOME/projects/pi-cnn
@@ -135,7 +110,7 @@ for MODEL in cnn upsample_cnn closure_cnn fno gnn; do
 done
 ```
 
-Download is slow (network-bound on JHTDB) but only happens once. Preprocess is idempotent — if all (input, target) pairs for a given split already exist, it skips immediately.
+Download is slow (network-bound on JHTDB) but only happens once. Preprocess is safe to rerun — if the train/val/test pairs are already on disk, it bails immediately.
 
 ## Training
 
@@ -157,11 +132,11 @@ tail -f logs/<jobid>.out                                      # Slurm stdout str
 tail -f /storage/ice1/3/9/<YOURUSER>/superresolution/logs/<model>/train_*.csv   # per-epoch CSV
 ```
 
-The best-val-loss `weights.pth` is written live during training (overwritten whenever val loss improves) — you can pull a usable model before the job finishes if needed.
+`weights.pth` gets overwritten every time val loss improves, so you can pull a usable model before the job hits wall time — no need to wait.
 
 ## Inference
 
-Default run — reads from the held-out `test/` split and writes one `prediction_t{XXXX}.npy` per input into `outputs_dir`:
+By default, inference reads from the held-out `test/` split and writes one `prediction_t{XXXX}.npy` per input into `outputs_dir`:
 
 ```bash
 python -m superresolution.inference --config-name=upsample_cnn env=hpc
@@ -176,9 +151,11 @@ python -m superresolution.inference --config-name=upsample_cnn env=hpc \
 
 ## Adding a new model variant
 
-1. Create `superresolution/models/<name>.py` containing three things (pattern-match against `cnn.py`):
-   - a `<Name>Dataset(Dataset)` class that loads `(input, target)` pairs and converts to whatever tensor/graph format the model expects
-   - a `make_training_pair(dns_velocity, sigma, ds_step, **kwargs)` function that `preprocess.py` imports dynamically
+Look at `models/cnn.py` as the reference — everything below is the pattern it follows.
+
+1. Create `superresolution/models/<name>.py` with three things in it:
+   - a `<Name>Dataset(Dataset)` class that loads `(input, target)` pairs and converts to whatever tensor or graph format the model expects
+   - a `make_training_pair(dns_velocity, sigma, ds_step, **kwargs)` function — `preprocess.py` imports this dynamically
    - the `nn.Module` itself
 2. Create `superresolution/configs/<name>.yaml`:
 
