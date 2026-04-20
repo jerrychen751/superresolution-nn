@@ -18,7 +18,7 @@ configs/
   gnn.yaml
   env/
     local.yaml       # storage_root for local development
-    hpc.yaml         # storage_root for PACE / HPC (uses $SCRATCH)
+    hpc.yaml         # storage_root for PACE / HPC (hardcoded scratch path)
 ```
 
 `default.yaml` holds the download, preprocess, and train blocks that every experiment uses. It also defines the artifact paths (`raw_data_dir`, `processed_data_dir`, `checkpoints_dir`, etc.) as interpolations off a `storage_root` variable — the env config group supplies the concrete value.
@@ -51,19 +51,20 @@ Each env file sets `storage_root` to an absolute path. `default.yaml` interpolat
 ```yaml
 # env/local.yaml
 # @package _global_
-storage_root: ${hydra:runtime.cwd}   # resolves to the dir you ran the command from
+storage_root: ${hydra:runtime.cwd}/superresolution   # artifacts live under superresolution/ — the effective project root
 ```
 
 ```yaml
 # env/hpc.yaml
 # @package _global_
-storage_root: ${oc.env:SCRATCH}/pi-cnn   # PACE sets $SCRATCH automatically
+storage_root: /storage/ice1/3/9/<YOURUSER>/superresolution   # hardcoded; $SCRATCH isn't exported into Slurm jobs
 ```
 
 ```yaml
 # default.yaml (excerpt)
 raw_data_dir: ${storage_root}/data/raw
 processed_data_dir: ${storage_root}/data/processed/${model.name}
+inference_data_dir: ${processed_data_dir}/test
 checkpoints_dir: ${storage_root}/checkpoints/${model.name}
 weights_dir: ${storage_root}/weights/${model.name}
 outputs_dir: ${storage_root}/outputs/${model.name}

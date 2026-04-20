@@ -32,9 +32,9 @@ fi
 echo "Model variant: $MODEL"
 
 # Code lives on NFS home; data/checkpoints/weights/logs live on scratch (configured via env=hpc).
-# $SCRATCH is set automatically by PACE; env/hpc.yaml interpolates storage_root off it.
+# Hardcoded PACE scratch path — $SCRATCH isn't exported to Slurm jobs.
 PROJECT_DIR=$HOME/projects/pi-cnn
-CONDA_ENV=$SCRATCH/conda/envs/ai
+CONDA_ENV=/storage/ice1/3/9/jchen3421/conda/envs/ai
 
 # Environment
 export PATH=$CONDA_ENV/bin:$PATH
