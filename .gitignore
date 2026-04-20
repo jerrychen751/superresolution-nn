@@ -5,6 +5,8 @@
 *.h5
 *.hdf5
 *.pt
+*.pth
+*.csv
 **/data/raw/
 **/data/processed/
 
