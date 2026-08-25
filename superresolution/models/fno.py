@@ -321,6 +321,14 @@ def make_training_pair(
 
 # --- Dataset ---
 
+def _build_coord_grid(nz: int, ny: int, nx: int) -> np.ndarray:
+    gz = np.linspace(0, 1, nz, dtype=np.float32)
+    gy = np.linspace(0, 1, ny, dtype=np.float32)
+    gx = np.linspace(0, 1, nx, dtype=np.float32)
+    grid_z, grid_y, grid_x = np.meshgrid(gz, gy, gx, indexing="ij")
+    return np.stack([grid_z, grid_y, grid_x], axis=0)
+
+
 class FNODataset(Dataset):
     """
     Loads (nz, ny, nx, 3) numpy pairs, transposes to (3, nz, ny, nx), and
@@ -334,15 +342,6 @@ class FNODataset(Dataset):
         self.targets = targets
         self._grid = None
 
-    def _get_grid(self, nz: int, ny: int, nx: int) -> np.ndarray:
-        if self._grid is None:
-            gz = np.linspace(0, 1, nz, dtype=np.float32)
-            gy = np.linspace(0, 1, ny, dtype=np.float32)
-            gx = np.linspace(0, 1, nx, dtype=np.float32)
-            grid_z, grid_y, grid_x = np.meshgrid(gz, gy, gx, indexing="ij")
-            self._grid = np.stack([grid_z, grid_y, grid_x], axis=0)
-        return self._grid
-
     def __len__(self) -> int:
         return len(self.inputs)
 
@@ -353,8 +352,9 @@ class FNODataset(Dataset):
         input_data = np.transpose(input_data, (3, 0, 1, 2))
         target_data = np.transpose(target_data, (3, 0, 1, 2))
 
-        grid = self._get_grid(*input_data.shape[1:])
-        input_data = np.concatenate([input_data, grid], axis=0)
+        if self._grid is None:
+            self._grid = _build_coord_grid(*input_data.shape[1:])
+        input_data = np.concatenate([input_data, self._grid], axis=0)
 
         return torch.from_numpy(input_data), torch.from_numpy(target_data)
 
@@ -368,11 +368,7 @@ def build_inference_fn(model: nn.Module, sample_shape: tuple, device: torch.devi
     closure so the per-sample call stays cheap.
     """
     nz, ny, nx, _ = sample_shape
-    gz = np.linspace(0, 1, nz, dtype=np.float32)
-    gy = np.linspace(0, 1, ny, dtype=np.float32)
-    gx = np.linspace(0, 1, nx, dtype=np.float32)
-    grid_z, grid_y, grid_x = np.meshgrid(gz, gy, gx, indexing="ij")
-    coord_grid = np.stack([grid_z, grid_y, grid_x], axis=0)
+    coord_grid = _build_coord_grid(nz, ny, nx)
 
     def predict(input_array: np.ndarray) -> np.ndarray:
         x = np.transpose(input_array, (3, 0, 1, 2))
