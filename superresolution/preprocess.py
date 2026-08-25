@@ -29,7 +29,7 @@ def apply_gaussian_filter(velocity: np.ndarray, sigma: float):
 
     # Apply 3 1D convolutions
     for c in range(velocity.shape[-1]): # 0, 1, or 2
-        filtered[..., c] = gaussian_filter(
+        filtered[..., c] = gaussian_filter(  # velocity[..., c]: (nz, ny, nx, 3) -> (nz, ny, nx)
             velocity[..., c], sigma=sigma, mode="wrap",
         )
     return filtered
@@ -40,13 +40,13 @@ def average_volumes(velocity: np.ndarray, ds_step: int) -> np.ndarray:
     Coarsen a velocity field by averaging each (ds_step)^3 block into one value.
     """
     nz, ny, nx, c = velocity.shape
-    reshaped = velocity.reshape(
+    reshaped = velocity.reshape(  # (nz, ny, nx, c) -> (nz_blocks, dz, ny_blocks, dy, nx_blocks, dx, c), where dz/dy/dx are the within-block offsets of size ds_step
         nz // ds_step, ds_step,
         ny // ds_step, ds_step,
         nx // ds_step, ds_step,
         c,
     )
-    return reshaped.mean(axis=(1, 3, 5))
+    return reshaped.mean(axis=(1, 3, 5))  # (nz_blocks, dz, ny_blocks, dy, nx_blocks, dx, c) -> (nz_blocks, ny_blocks, nx_blocks, c)
 
 
 # Full preprocessing pipeline

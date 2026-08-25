@@ -47,11 +47,11 @@ cube = turb_dataset(
 N = 32  # N*N = 1024 points, well under the 4096 testing limit
 xs = np.linspace(0, 2 * np.pi, N, endpoint=False)
 ys = np.linspace(0, 2 * np.pi, N, endpoint=False)
-xg, yg = np.meshgrid(xs, ys, indexing="ij")
+xg, yg = np.meshgrid(xs, ys, indexing="ij")  # (N,), (N,) -> 2x (nx, ny)
 
 # getData expects an (M, 3) array where each row is one [x, y, z] query point.
 # The domain is [0, 2pi)^3 with periodic boundaries.
-points = np.column_stack([
+points = np.column_stack([  # 3x (N*N,) -> (N*N, 3)
     xg.ravel(),
     yg.ravel(),
     np.full(N * N, np.pi),
@@ -72,8 +72,8 @@ results = getData(
 df = results[0]
 print(df.head())
 
-ux = df["ux"].values.reshape(N, N)
-uy = df["uy"].values.reshape(N, N)
+ux = df["ux"].values.reshape(N, N)  # (N*N,) -> (nx, ny), which is why pcolormesh below needs speed.T
+uy = df["uy"].values.reshape(N, N)  # (N*N,) -> (nx, ny)
 speed = np.sqrt(ux**2 + uy**2)
 
 fig, ax = plt.subplots(figsize=(6, 5))

@@ -73,9 +73,9 @@ def make_training_pair(
     from scipy.ndimage import zoom
 
     blurred = apply_gaussian_filter(dns_velocity, sigma)
-    coarse = blurred[::ds_step, ::ds_step, ::ds_step]
+    coarse = blurred[::ds_step, ::ds_step, ::ds_step]  # (nz, ny, nx, 3) -> (nz//ds_step, ny//ds_step, nx//ds_step, 3)
     # zoom tuple determines how much to scale each axis
-    coarse_upsampled = zoom(coarse, (ds_step, ds_step, ds_step, 1), order=spline_order, mode="wrap")
+    coarse_upsampled = zoom(coarse, (ds_step, ds_step, ds_step, 1), order=spline_order, mode="wrap")  # (nz//ds_step, ny//ds_step, nx//ds_step, 3) -> (nz, ny, nx, 3)
 
     correction = dns_velocity - coarse_upsampled
     return coarse_upsampled, correction # (nz, ny, nx, 3) each
@@ -87,7 +87,7 @@ def _build_grid_edges(nz: int, ny: int, nx: int) -> torch.Tensor:
     topology that CircularConv3d gets via padding_mode='circular'.
     """
     N = nz * ny * nx
-    idx = np.arange(N, dtype=np.int64).reshape(nz, ny, nx)
+    idx = np.arange(N, dtype=np.int64).reshape(nz, ny, nx)  # (N,) -> (nz, ny, nx)
 
     offsets = [
         (-1, 0, 0), (1, 0, 0),
@@ -98,10 +98,10 @@ def _build_grid_edges(nz: int, ny: int, nx: int) -> torch.Tensor:
     srcs, dsts = [], []
     for (dz, dy, dx) in offsets:
         dst = np.roll(idx, shift=(dz, dy, dx), axis=(0, 1, 2))
-        srcs.append(idx.ravel())
-        dsts.append(dst.ravel())
+        srcs.append(idx.ravel())  # (nz, ny, nx) -> (N,)
+        dsts.append(dst.ravel())  # (nz, ny, nx) -> (N,)
 
-    edge_index = np.stack(
+    edge_index = np.stack(  # len(offsets)x (N,) concatenated to 2x (len(offsets)*N,) -> (2, len(offsets)*N)
         [np.concatenate(srcs), np.concatenate(dsts)],
         axis=0,
     )
@@ -131,8 +131,8 @@ class GNNDataset(Dataset):
         input_grid = np.load(self.inputs[i]).astype(np.float32)
         target_grid = np.load(self.targets[i]).astype(np.float32)
 
-        x = torch.from_numpy(input_grid.reshape(-1, 3))
-        y = torch.from_numpy(target_grid.reshape(-1, 3))
+        x = torch.from_numpy(input_grid.reshape(-1, 3))  # (nz, ny, nx, 3) -> (N, 3)
+        y = torch.from_numpy(target_grid.reshape(-1, 3))  # (nz, ny, nx, 3) -> (N, 3)
 
         return Data(x=x, y=y, edge_index=self.edge_index)
 
@@ -149,8 +149,8 @@ def build_inference_fn(model: nn.Module, sample_shape: tuple, device: torch.devi
     edge_index = _build_grid_edges(nz, ny, nx).to(device)
 
     def predict(input_array: np.ndarray) -> np.ndarray:
-        x = torch.from_numpy(input_array.reshape(-1, 3)).to(device)
+        x = torch.from_numpy(input_array.reshape(-1, 3)).to(device)  # (nz, ny, nx, 3) -> (N, 3)
         data = Data(x=x, edge_index=edge_index)
         pred = model(data).cpu().numpy()
-        return pred.reshape(input_array.shape)
+        return pred.reshape(input_array.shape)  # (N, 3) -> (nz, ny, nx, 3)
     return predict

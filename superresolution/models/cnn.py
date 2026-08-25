@@ -93,8 +93,8 @@ def make_training_pair(
     from ..preprocess import apply_gaussian_filter
 
     blurred = apply_gaussian_filter(dns_velocity, sigma=sigma)
-    coarse = blurred[::ds_step, ::ds_step, ::ds_step, :]
-    coarse_upsampled = zoom(
+    coarse = blurred[::ds_step, ::ds_step, ::ds_step, :]  # (nz, ny, nx, 3) -> (nz//ds_step, ny//ds_step, nx//ds_step, 3)
+    coarse_upsampled = zoom(  # (nz//ds_step, ny//ds_step, nx//ds_step, 3) -> (nz, ny, nx, 3)
         coarse, (ds_step, ds_step, ds_step, 1), order=spline_order, mode="wrap",
     )
     correction = dns_velocity - coarse_upsampled
@@ -120,8 +120,8 @@ class CNNDataset(Dataset):
         input_data = np.load(self.inputs[i]).astype(np.float32)
         target_data = np.load(self.targets[i]).astype(np.float32)
 
-        input_data = np.transpose(input_data, (3, 0, 1, 2))
-        target_data = np.transpose(target_data, (3, 0, 1, 2))
+        input_data = np.transpose(input_data, (3, 0, 1, 2))  # (nz, ny, nx, 3) -> (3, nz, ny, nx)
+        target_data = np.transpose(target_data, (3, 0, 1, 2))  # (nz, ny, nx, 3) -> (3, nz, ny, nx)
 
         return torch.from_numpy(input_data), torch.from_numpy(target_data)
 
@@ -134,8 +134,8 @@ def build_inference_fn(model: nn.Module, sample_shape: tuple, device: torch.devi
     same on-disk layout. inference.py dispatches here based on cfg.model.name.
     """
     def predict(input_array: np.ndarray) -> np.ndarray:
-        x = np.transpose(input_array, (3, 0, 1, 2))
-        x = torch.from_numpy(x).unsqueeze(0).to(device)
-        pred = model(x)[0].cpu().numpy()
-        return np.transpose(pred, (1, 2, 3, 0))
+        x = np.transpose(input_array, (3, 0, 1, 2))  # (nz, ny, nx, 3) -> (3, nz, ny, nx)
+        x = torch.from_numpy(x).unsqueeze(0).to(device)  # (3, nz, ny, nx) -> (1, 3, nz, ny, nx)
+        pred = model(x)[0].cpu().numpy()  # (1, 3, nz, ny, nx) -> (3, nz, ny, nx)
+        return np.transpose(pred, (1, 2, 3, 0))  # (3, nz, ny, nx) -> (nz, ny, nx, 3)
     return predict

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 N = 64 # grid size
 x = torch.linspace(0, 1, N)
 y = torch.linspace(0, 1, N)
-X, Y = torch.meshgrid(x, y, indexing='ij')
+X, Y = torch.meshgrid(x, y, indexing='ij')  # (N,), (N,) -> 2x (N, N)
 
 # Naming convention is _true for source
 # (batch size (number of samples), channels (features per sample), height, width)

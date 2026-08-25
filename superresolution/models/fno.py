@@ -70,14 +70,14 @@ class SpectralConv2d(nn.Module):
         out_ft[:, :, :self.k_max, :self.k_max] = torch.einsum(
             "bixy, ioxy -> boxy",
             v_ft[:, :, :self.k_max, :self.k_max],
-            torch.view_as_complex(self.W1)
+            torch.view_as_complex(self.W1)  # (d_v, d_v, k_max, k_max, 2) real -> (d_v, d_v, k_max, k_max) complex
         )
         out_ft[:, :, -self.k_max:, :self.k_max] = torch.einsum(
             "bixy, ioxy -> boxy",
             v_ft[:, :, -self.k_max:, :self.k_max],
-            torch.view_as_complex(self.W2)
+            torch.view_as_complex(self.W2)  # (d_v, d_v, k_max, k_max, 2) real -> (d_v, d_v, k_max, k_max) complex
         )
-        return torch.fft.irfft2(out_ft, s=(nx, ny))
+        return torch.fft.irfft2(out_ft, s=(nx, ny))  # (batch, d_v, nx, ny//2 + 1) -> (batch, d_v, nx, ny)
 
 
 class FourierLayer2d(nn.Module):
@@ -197,28 +197,28 @@ class SpectralConv3d(nn.Module):
         out_ft[:, :, :k, :k, :k] = torch.einsum(
             "bixyz, ioxyz -> boxyz",
             v_ft[:, :, :k, :k, :k],
-            torch.view_as_complex(self.W1)
+            torch.view_as_complex(self.W1)  # (d_v, d_v, k_max, k_max, k_max, 2) real -> (d_v, d_v, k_max, k_max, k_max) complex
         )
         # Octant 2: high-z (negative freq), low-y, low-x
         out_ft[:, :, -k:, :k, :k] = torch.einsum(
             "bixyz, ioxyz -> boxyz",
             v_ft[:, :, -k:, :k, :k],
-            torch.view_as_complex(self.W2)
+            torch.view_as_complex(self.W2)  # (d_v, d_v, k_max, k_max, k_max, 2) real -> (d_v, d_v, k_max, k_max, k_max) complex
         )
         # Octant 3: low-z, high-y (negative freq), low-x
         out_ft[:, :, :k, -k:, :k] = torch.einsum(
             "bixyz, ioxyz -> boxyz",
             v_ft[:, :, :k, -k:, :k],
-            torch.view_as_complex(self.W3)
+            torch.view_as_complex(self.W3)  # (d_v, d_v, k_max, k_max, k_max, 2) real -> (d_v, d_v, k_max, k_max, k_max) complex
         )
         # Octant 4: high-z, high-y, low-x
         out_ft[:, :, -k:, -k:, :k] = torch.einsum(
             "bixyz, ioxyz -> boxyz",
             v_ft[:, :, -k:, -k:, :k],
-            torch.view_as_complex(self.W4)
+            torch.view_as_complex(self.W4)  # (d_v, d_v, k_max, k_max, k_max, 2) real -> (d_v, d_v, k_max, k_max, k_max) complex
         )
 
-        return torch.fft.irfftn(out_ft, s=(nz, ny, nx))
+        return torch.fft.irfftn(out_ft, s=(nz, ny, nx))  # (batch, d_v, nz, ny, nx//2+1) -> (batch, d_v, nz, ny, nx)
 
 
 class FourierLayer3d(nn.Module):
@@ -311,8 +311,8 @@ def make_training_pair(
     from ..preprocess import apply_gaussian_filter
 
     blurred = apply_gaussian_filter(dns_velocity, sigma=sigma)
-    coarse = blurred[::ds_step, ::ds_step, ::ds_step, :]
-    coarse_upsampled = zoom(
+    coarse = blurred[::ds_step, ::ds_step, ::ds_step, :]  # (nz, ny, nx, 3) -> (nz//ds_step, ny//ds_step, nx//ds_step, 3)
+    coarse_upsampled = zoom(  # (nz//ds_step, ny//ds_step, nx//ds_step, 3) -> (nz, ny, nx, 3)
         coarse, (ds_step, ds_step, ds_step, 1), order=spline_order, mode="wrap",
     )
     correction = dns_velocity - coarse_upsampled
@@ -325,8 +325,8 @@ def _build_coord_grid(nz: int, ny: int, nx: int) -> np.ndarray:
     gz = np.linspace(0, 1, nz, dtype=np.float32)
     gy = np.linspace(0, 1, ny, dtype=np.float32)
     gx = np.linspace(0, 1, nx, dtype=np.float32)
-    grid_z, grid_y, grid_x = np.meshgrid(gz, gy, gx, indexing="ij")
-    return np.stack([grid_z, grid_y, grid_x], axis=0)
+    grid_z, grid_y, grid_x = np.meshgrid(gz, gy, gx, indexing="ij")  # (nz,), (ny,), (nx,) -> 3x (nz, ny, nx)
+    return np.stack([grid_z, grid_y, grid_x], axis=0)  # 3x (nz, ny, nx) -> (3, nz, ny, nx)
 
 
 class FNODataset(Dataset):
@@ -349,12 +349,12 @@ class FNODataset(Dataset):
         input_data = np.load(self.inputs[i]).astype(np.float32)
         target_data = np.load(self.targets[i]).astype(np.float32)
 
-        input_data = np.transpose(input_data, (3, 0, 1, 2))
-        target_data = np.transpose(target_data, (3, 0, 1, 2))
+        input_data = np.transpose(input_data, (3, 0, 1, 2))  # (nz, ny, nx, 3) -> (3, nz, ny, nx)
+        target_data = np.transpose(target_data, (3, 0, 1, 2))  # (nz, ny, nx, 3) -> (3, nz, ny, nx)
 
         if self._grid is None:
             self._grid = _build_coord_grid(*input_data.shape[1:])
-        input_data = np.concatenate([input_data, self._grid], axis=0)
+        input_data = np.concatenate([input_data, self._grid], axis=0)  # (3, nz, ny, nx) + (3, nz, ny, nx) -> (6, nz, ny, nx)
 
         return torch.from_numpy(input_data), torch.from_numpy(target_data)
 
@@ -371,9 +371,9 @@ def build_inference_fn(model: nn.Module, sample_shape: tuple, device: torch.devi
     coord_grid = _build_coord_grid(nz, ny, nx)
 
     def predict(input_array: np.ndarray) -> np.ndarray:
-        x = np.transpose(input_array, (3, 0, 1, 2))
-        x = np.concatenate([x, coord_grid], axis=0)
-        x = torch.from_numpy(x).unsqueeze(0).to(device)
-        pred = model(x)[0].cpu().numpy()
-        return np.transpose(pred, (1, 2, 3, 0))
+        x = np.transpose(input_array, (3, 0, 1, 2))  # (nz, ny, nx, 3) -> (3, nz, ny, nx)
+        x = np.concatenate([x, coord_grid], axis=0)  # (3, nz, ny, nx) + (3, nz, ny, nx) -> (6, nz, ny, nx)
+        x = torch.from_numpy(x).unsqueeze(0).to(device)  # (6, nz, ny, nx) -> (1, 6, nz, ny, nx)
+        pred = model(x)[0].cpu().numpy()  # model (1, 6, nz, ny, nx) -> (1, 3, nz, ny, nx), then [0] -> (3, nz, ny, nx)
+        return np.transpose(pred, (1, 2, 3, 0))  # (3, nz, ny, nx) -> (nz, ny, nx, 3)
     return predict
