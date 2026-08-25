@@ -1,7 +1,7 @@
 """
 We train the model using DNS (high-res 3D simulation of fluid flow).
 
-Training data shape is (nx, ny, nz, 3) where 3 represents velocity in x/y/z directions, with these 3 data at all points.
+Training data shape is (nz, ny, nx, 3) where 3 represents velocity in x/y/z directions, with these 3 data at all points.
 
 The goal is to allow the model to predict a correction term so that a low-res simulation can use the correction term to obtain similar accuracy to high-res.
 """
@@ -22,8 +22,8 @@ def apply_gaussian_filter(velocity: np.ndarray, sigma: float):
     Artificially blur the DNS data to generate model input. Uses a weighted sum of a kernel at each point where weights are generated from Gaussian PDF.
     
     Args:
-        velocity (nx, ny, nz, 3): DNS velocity flow field
-        sigma (int): Standard deviation of normal distribution
+        velocity (nz, ny, nx, 3): DNS velocity flow field
+        sigma (float): Standard deviation of normal distribution
     """
     filtered = np.empty_like(velocity)
     
