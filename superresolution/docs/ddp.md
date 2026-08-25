@@ -1,4 +1,5 @@
 ### Overview
+
 PyTorch DDP (Distributed Data Parallel) is a method of partitioning the dataset so that training occurs on multiple GPUs, offering a near-linear speedup in training time.
 
 The same model weights are loaded on multiple GPUs. The convention is one process per GPU, where each process has access to the full training dataset. A `DistributedSampler` object partitions the indices so that each GPU gets an even number of samples.
@@ -6,13 +7,16 @@ The same model weights are loaded on multiple GPUs. The convention is one proces
 Each GPU runs forward and backward independently, producing its own gradients. The gradients are then averaged across each GPU (so they all become identical) and then each calls `optimizer.step()` to update model parameters using learning rate / gradient.
 
 ### Code Adjustments
+
 ##### Starting Script
+
 When there are `N` independent GPU processes, each process needs to have some context:
-    - What is `world_size`, or the total number of processes?
-        - When partitioning data, PyTorch needs to know how many processes there are total.
-    - What is `rank`, which is this particular process's ID?
-        - Some things should only be done once, like saving checkpointed model weights during the training process (rank == 0).
-    - What is `local_rank`, which is this particular process's GPU index on this node? (A node/machine may have multiple GPUs.)
+
+- What is `world_size`, or the total number of processes?
+  - When partitioning data, PyTorch needs to know how many processes there are total.
+- What is `rank`, which is this particular process's ID?
+  - Some things should only be done once, like saving checkpointed model weights during the training process (rank == 0).
+- What is `local_rank`, which is this particular process's GPU index on this node? (A node/machine may have multiple GPUs.)
 
 The `torchrun` command handles all of that for you by setting environment variables that most PyTorch objects, when initialized, automatically read.
 
@@ -29,7 +33,9 @@ srun torchrun \
 ```
 
 ##### Process Initialization
+
 There are 3 main new imports:
+
 ```python
 from torch.utils.data import Dataset, DataLoader, DistributedSampler # Partitions dataset
 import torch.distributed as dist # Main API for distributed computing
@@ -45,6 +51,7 @@ if using_ddp:
 ```
 
 ##### Use DistributedSampler
+
 Along with `DataLoader` objects, we initialize `DistributedSampler` objects for train/val datasets, with shuffling for training.
 
 ```python
@@ -56,6 +63,7 @@ train_loader = DataLoader(
 ```
 
 ##### Wrap Model in DDP
+
 This step ensures that the all-reduce algorithm can work across all processes.
 
 ```python
@@ -65,6 +73,7 @@ if using_ddp:
 ```
 
 ##### Compute Loss
+
 The first step is to properly seed the sampler (specifically the one for training) since it shuffles. We can use the epoch number as the random seed.
 
 ```python
