@@ -34,10 +34,10 @@ echo "Model variant: $MODEL"
 # Code lives on NFS home; data/checkpoints/weights/logs live on scratch (configured via env=hpc).
 # Hardcoded PACE scratch path — $SCRATCH isn't exported to Slurm jobs.
 PROJECT_DIR=$HOME/projects/pi-cnn
-CONDA_ENV=/storage/ice1/3/9/jchen3421/conda/envs/ai
+VENV=/storage/ice1/3/9/jchen3421/venvs/pi-cnn
 
 # Environment
-export PATH=$CONDA_ENV/bin:$PATH
+export PATH=$VENV/bin:$PATH
 
 # Diagnostics
 echo "Job $SLURM_JOB_ID started at $(date)"
@@ -64,7 +64,7 @@ MASTER_PORT=29500
 export MASTER_ADDR MASTER_PORT
 
 # Step 3: Train model
-# Resolve torchrun's full path before srun, since srun spawns a new process that may not inherit the conda env's PATH modifications.
+# Resolve torchrun's full path before srun, since srun spawns a new process that may not inherit the venv's PATH modifications.
 TORCHRUN=$(which torchrun)
 echo "=== Step 3: Train (model=$MODEL) ==="
 srun $TORCHRUN \

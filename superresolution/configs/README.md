@@ -1,8 +1,8 @@
 This project uses [Hydra](https://hydra.cc/) (from Meta) to manage experiment configuration. It composes nested YAML files into one runtime config object and lets you override individual fields from the CLI — handy for quick experimentation.
 
-Install:
+Both are pinned in `pyproject.toml` and installed by `setup_env.sh`. To add them to an environment by hand:
 ```
-conda install conda-forge::hydra-core=1.3.2 conda-forge::omegaconf=2.3.0
+uv add hydra-core==1.3.2 omegaconf==2.3.0
 ```
 
 ### Layout
