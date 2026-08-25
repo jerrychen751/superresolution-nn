@@ -45,6 +45,15 @@ def _get_data_classes(model_name: str):
     raise ValueError(f"Unknown model name: {model_name}")
 
 
+def _save_atomically(state_dict, path: Path) -> None:
+    """
+    Replace path with the state dict. Leaves the previous file intact if the process dies mid-write.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    torch.save(state_dict, tmp)
+    tmp.replace(path)
+
+
 def _unpack_batch(batch, device, is_graph: bool):
     """
     Normalize a DataLoader batch into (model_input, target, batch_size). For
@@ -61,6 +70,29 @@ def _unpack_batch(batch, device, is_graph: bool):
 
 @hydra.main(version_base=None, config_path="configs", config_name="cnn")
 def train_eval(cfg):
+    processed_dir = Path(cfg.processed_data_dir)
+
+    # Construct Datasets from pre-split subdirs written by preprocess.py
+    train_dir = processed_dir / "train"
+    val_dir = processed_dir / "val"
+
+    train_input_fps = sorted(train_dir.glob("input_t*.npy"))
+    train_target_fps = sorted(train_dir.glob("target_t*.npy"))
+    val_input_fps = sorted(val_dir.glob("input_t*.npy"))
+    val_target_fps = sorted(val_dir.glob("target_t*.npy"))
+
+    counts = {
+        "train inputs": len(train_input_fps),
+        "train targets": len(train_target_fps),
+        "val inputs": len(val_input_fps),
+        "val targets": len(val_target_fps),
+    }
+    if not all(counts.values()) or counts["train inputs"] != counts["train targets"] or counts["val inputs"] != counts["val targets"]:
+        raise SystemExit(
+            f"{processed_dir} holds " + ", ".join(f"{k} {v}" for k, v in counts.items())
+            + ". Each split needs equal, non-zero input and target counts. Run superresolution.preprocess first."
+        )
+
     using_ddp = int(os.getenv("WORLD_SIZE", 1)) > 1
     if using_ddp:
         dist.init_process_group("nccl")
@@ -71,8 +103,6 @@ def train_eval(cfg):
             device = torch.device('cuda')
         else:
             device = torch.device('cpu')
-
-    processed_dir = Path(cfg.processed_data_dir)
 
     checkpoints_dir = Path(cfg.checkpoints_dir)
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
@@ -93,15 +123,6 @@ def train_eval(cfg):
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(["epoch", "train_loss", "val_loss", "learning_rate"])
         print(f"Logging per-epoch stats to {csv_path}", flush=True)
-
-    # Construct Datasets from pre-split subdirs written by preprocess.py
-    train_dir = processed_dir / "train"
-    val_dir = processed_dir / "val"
-
-    train_input_fps = sorted(train_dir.glob("input_t*.npy"))
-    train_target_fps = sorted(train_dir.glob("target_t*.npy"))
-    val_input_fps = sorted(val_dir.glob("input_t*.npy"))
-    val_target_fps = sorted(val_dir.glob("target_t*.npy"))
 
     DatasetCls, LoaderCls = _get_data_classes(cfg.model.name)
     is_graph = cfg.model.name == "gnn"
@@ -181,6 +202,7 @@ def train_eval(cfg):
 
         model.train()
         train_loss = 0.0 # average loss per epoch
+        train_count = 0
         for batch in train_loader:
             model_input, targets, bs = _unpack_batch(batch, device, is_graph)
 
@@ -195,29 +217,32 @@ def train_eval(cfg):
 
             # loss.item() returns average MSE over the batch; bs scales it per-sample.
             train_loss += loss.item() * bs
+            train_count += bs
 
         if using_ddp:
-            local_train_loss = torch.tensor(train_loss, device=device)
-            dist.all_reduce(local_train_loss, op=dist.ReduceOp.SUM)
-            train_loss = local_train_loss.item() / len(train_ds)
+            train_totals = torch.tensor([train_loss, train_count], device=device)
+            dist.all_reduce(train_totals, op=dist.ReduceOp.SUM)
+            train_loss = (train_totals[0] / train_totals[1]).item()
         else:
-            train_loss /= len(train_ds) # average over all training samples
+            train_loss /= train_count # average over all training samples
 
         # Track validation loss
         model.eval()
         val_loss = 0.0
+        val_count = 0
         with torch.no_grad():
             for batch in val_loader:
                 model_input, targets, bs = _unpack_batch(batch, device, is_graph)
                 loss = criterion(model(model_input), targets)
                 val_loss += loss.item() * bs
+                val_count += bs
 
         if using_ddp:
-            local_val_loss = torch.tensor(val_loss, device=device)
-            dist.all_reduce(local_val_loss, dist.ReduceOp.SUM)
-            val_loss = local_val_loss.item() / len(val_ds)
+            val_totals = torch.tensor([val_loss, val_count], device=device)
+            dist.all_reduce(val_totals, op=dist.ReduceOp.SUM)
+            val_loss = (val_totals[0] / val_totals[1]).item()
         else:
-            val_loss /= len(val_ds)
+            val_loss /= val_count
 
         # Per-epoch log: stdout (for slurm capture) + CSV (for later analysis).
         if is_primary:
@@ -232,7 +257,7 @@ def train_eval(cfg):
         # Save the model at checkpoints, as well as loss stats
         if epoch % 50 == 0 and is_primary:
             state_dict = model.module.state_dict() if using_ddp else model.state_dict()
-            torch.save(state_dict, checkpoints_dir / f"checkpoint_epoch_{epoch}.pth")
+            _save_atomically(state_dict, checkpoints_dir / f"checkpoint_epoch_{epoch}.pth")
 
         # Save the best epoch's weights
         if val_loss < best_loss:
@@ -240,7 +265,7 @@ def train_eval(cfg):
 
             if is_primary:
                 state_dict = model.module.state_dict() if using_ddp else model.state_dict()
-                torch.save(state_dict, weights_dir / "weights.pth")
+                _save_atomically(state_dict, weights_dir / "weights.pth")
 
         scheduler.step() # adjust LR before the next epoch
 

@@ -2,6 +2,7 @@
 Download 3D velocity cubes from the JHU Turbulence Database.
 """
 
+import os
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -63,9 +64,10 @@ def download_cubes(
 
         print(f"[download] time step {t}...", end=" ", flush=True)
         velocity = get_velocity_cube(conn, t, nx=nx, ny=ny, nz=nz) # (nz, ny, nx, 3)
-        tmp_path = out_path.parent / f"velocity_t{t:04d}.tmp.npy"
-        np.save(tmp_path, velocity)
-        tmp_path.rename(out_path)  # atomic on same filesystem
+        tmp_path = out_path.parent / f"velocity_t{t:04d}.npy.{os.getpid()}.tmp"
+        with tmp_path.open("wb") as fh:
+            np.save(fh, velocity)
+        tmp_path.replace(out_path)  # atomic on same filesystem
         print(f"saved {out_path}  shape={velocity.shape}")
 
 

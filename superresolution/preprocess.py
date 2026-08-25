@@ -7,6 +7,7 @@ The goal is to allow the model to predict a correction term so that a low-res si
 """
 
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -57,8 +58,7 @@ def prepare_dataset(cfg):
 
     raw_files = sorted(raw_dir.glob("velocity_t*.npy"))
     if not raw_files:
-        print(f"No raw files found in {raw_dir}")
-        return
+        raise SystemExit(f"No raw files found in {raw_dir}. Run superresolution.download first.")
 
     print(f"Found {len(raw_files)} raw cubes")
 
@@ -67,28 +67,41 @@ def prepare_dataset(cfg):
     if abs(ratio_sum - 1.0) > 1e-6:
         raise ValueError(f"preprocess split ratios must sum to 1.0, got {ratio_sum}")
     n = len(raw_files)
-    n_train = int(cfg.preprocess.train_ratio * n)
-    n_val = int(cfg.preprocess.val_ratio * n)
+    n_train = round(cfg.preprocess.train_ratio * n)
+    n_val = round(cfg.preprocess.val_ratio * n)
     splits = {
         "train": raw_files[:n_train],
         "val": raw_files[n_train:n_train + n_val],
         "test": raw_files[n_train + n_val:],
     }
+    ratios = {
+        "train": cfg.preprocess.train_ratio,
+        "val": cfg.preprocess.val_ratio,
+        "test": cfg.preprocess.test_ratio,
+    }
+    empty = [name for name, files in splits.items() if not files and ratios[name] > 0]
+    if empty:
+        raise SystemExit(
+            f"{n} raw cubes at ratios "
+            f"{cfg.preprocess.train_ratio}/{cfg.preprocess.val_ratio}/{cfg.preprocess.test_ratio} "
+            f"leaves {', '.join(empty)} empty. Download more cubes or change the ratios."
+        )
     for split_name, split_files in splits.items():
         (processed_dir / split_name).mkdir(parents=True, exist_ok=True)
         print(f"  {split_name}: {len(split_files)} files")
 
-    # Check if all processed outputs already exist
-    expected = []
+    raw_timesteps = {fp.stem.split("_t")[1] for fp in raw_files}
     for split_name, split_files in splits.items():
-        for fp in split_files:
-            t_str = fp.stem.split("_t")[1]
-            expected.append(processed_dir / split_name / f"input_t{t_str}.npy")
-            expected.append(processed_dir / split_name / f"target_t{t_str}.npy")
-
-    if all(p.exists() for p in expected):
-        print("All processed files already exist, skipping preprocessing.")
-        return
+        split_dir = processed_dir / split_name
+        keep = {fp.stem.split("_t")[1] for fp in split_files}
+        moved = [p for p in split_dir.glob("*_t*.npy")
+                 if p.stem.split("_t")[1] in raw_timesteps and p.stem.split("_t")[1] not in keep]
+        for p in moved:
+            p.unlink()
+        for leftover in split_dir.glob("*.tmp"):
+            leftover.unlink()
+        if moved:
+            print(f"  {split_name}: dropped {len(moved)} pairs that moved to another split")
 
     # Select the make_training_pair function based on the active model
     mode = cfg.model.name
@@ -105,10 +118,13 @@ def prepare_dataset(cfg):
     else:
         raise ValueError(f"Unknown preprocess mode: {mode}")
 
+    written = 0
     for split_name, split_files in splits.items():
         split_dir = processed_dir / split_name
         for fp in split_files:
             t_str = fp.stem.split("_t")[1]
+            if all((split_dir / f"{name}_t{t_str}.npy").exists() for name in ("input", "target")):
+                continue
 
             print(f"[preprocess] {split_name}/{fp.name}...", end=" ", flush=True)
             fine = np.load(fp).astype(np.float32)
@@ -120,12 +136,14 @@ def prepare_dataset(cfg):
             )
             for name, arr in [("input", coarse), ("target", target)]:
                 out = split_dir / f"{name}_t{t_str}.npy"
-                tmp = split_dir / f"{name}_t{t_str}.tmp.npy"
-                np.save(tmp, arr)
-                tmp.rename(out)
+                tmp = split_dir / f"{name}_t{t_str}.npy.{os.getpid()}.tmp"
+                with tmp.open("wb") as fh:
+                    np.save(fh, arr)
+                tmp.replace(out)
+            written += 1
             print(f"target range: [{target.min():.4f}, {target.max():.4f}]")
 
-    print(f"Saved {n} pairs to {processed_dir} (train/val/test)")
+    print(f"Wrote {written} of {n} pairs to {processed_dir} (train/val/test); {n - written} were already on disk")
 
 
 if __name__ == "__main__":
