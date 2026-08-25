@@ -12,13 +12,6 @@ from givernylocal.turbulence_toolkit import getCutout
 import hydra
 
 
-def get_jhtdb_conn(dataset: str, cache_dir: str, token: str) -> turb_dataset:
-    return turb_dataset(
-        dataset_title=dataset,
-        output_path=cache_dir,
-        auth_token=token,
-    )
-
 def get_velocity_cube(
     conn: turb_dataset,
     time_step: int,
@@ -80,10 +73,10 @@ def download_cubes(
 def main(cfg):
     raw_dir = Path(cfg.raw_data_dir)
 
-    conn = get_jhtdb_conn(
-        dataset=cfg.download.jhtdb_dataset,
-        cache_dir=cfg.download.jhtdb_cache_dir,
-        token=cfg.download.jhtdb_token,
+    conn = turb_dataset(
+        dataset_title=cfg.download.jhtdb_dataset,
+        output_path=cfg.download.jhtdb_cache_dir,
+        auth_token=cfg.download.jhtdb_token,
     )
 
     step = cfg.download.max_timesteps // cfg.download.num_cubes

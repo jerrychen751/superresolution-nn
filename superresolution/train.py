@@ -249,7 +249,7 @@ def train_eval(cfg):
 
             if using_ddp:
                 dist.barrier()
-            
+
         scheduler.step() # adjust LR before the next epoch
 
     if csv_file is not None:

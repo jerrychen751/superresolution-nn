@@ -8,6 +8,27 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv
 from torch.utils.data import Dataset
 
+class GNNResBlock(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv1 = GCNConv(channels, channels)
+        self.bn1 = nn.BatchNorm1d(channels)
+        self.conv2 = GCNConv(channels, channels)
+        self.bn2 = nn.BatchNorm1d(channels)
+
+    def forward(self, x, edge_index):
+        identity = x
+
+        out = self.conv1(x, edge_index)
+        out = self.bn1(out)
+        out = F.relu(out)
+
+        out = self.conv2(out, edge_index)
+        out = self.bn2(out)
+
+        out = out + identity
+        return F.relu(out)
+
 class GNN(nn.Module):
     def __init__(self, hidden_channels=64, num_blocks=4):
         super().__init__()
@@ -41,27 +62,6 @@ class GNN(nn.Module):
 
         # Residual learning
         return x
-    
-class GNNResBlock(nn.Module):
-    def __init__(self, channels):
-        super().__init__()
-        self.conv1 = GCNConv(channels, channels)
-        self.bn1 = nn.BatchNorm1d(channels)
-        self.conv2 = GCNConv(channels, channels)
-        self.bn2 = nn.BatchNorm1d(channels)
-
-    def forward(self, x, edge_index):
-        identity = x
-
-        out = self.conv1(x, edge_index)
-        out = self.bn1(out)
-        out = F.relu(out)
-
-        out = self.conv2(out, edge_index)
-        out = self.bn2(out)
-
-        out = out + identity
-        return F.relu(out)
 
 def make_training_pair(
     dns_velocity: np.ndarray, # (nz, ny, nx, 3)

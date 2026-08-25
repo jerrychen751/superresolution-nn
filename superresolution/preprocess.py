@@ -20,13 +20,13 @@ import hydra
 def apply_gaussian_filter(velocity: np.ndarray, sigma: float):
     """
     Artificially blur the DNS data to generate model input. Uses a weighted sum of a kernel at each point where weights are generated from Gaussian PDF.
-    
+
     Args:
         velocity (nz, ny, nx, 3): DNS velocity flow field
         sigma (float): Standard deviation of normal distribution
     """
     filtered = np.empty_like(velocity)
-    
+
     # Apply 3 1D convolutions
     for c in range(velocity.shape[-1]): # 0, 1, or 2
         filtered[..., c] = gaussian_filter(
@@ -35,7 +35,7 @@ def apply_gaussian_filter(velocity: np.ndarray, sigma: float):
     return filtered
 
 
-def volume_average(velocity: np.ndarray, ds_step: int) -> np.ndarray:
+def average_volumes(velocity: np.ndarray, ds_step: int) -> np.ndarray:
     """
     Coarsen a velocity field by averaging each (ds_step)^3 block into one value.
     """

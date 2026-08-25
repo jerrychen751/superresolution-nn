@@ -169,7 +169,7 @@ axes_ranges = np.array([
     [1, 16],  # 16 grid points in x
     [1, 16],  # 16 grid points in y
     [1, 16],  # 16 grid points in z
-    [1, 1],   # single snapshot
+    [1, 1],  # single snapshot
 ])
 strides = np.array([1, 1, 1, 1])  # stride > 1 would skip grid points (coarsen)
 

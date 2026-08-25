@@ -25,7 +25,7 @@ class LaplacianOperator(nn.Module):
         self.conv = nn.Conv2d(1, 1, kernel_size=3, bias=False)
         # overwrites random starting weights with Laplacian
         # also freezes it by not using gradients during backpropagation
-        self.conv.weight = nn.Parameter(weights, requires_grad=False) 
+        self.conv.weight = nn.Parameter(weights, requires_grad=False)
 
     # Define forward propagation operation
     def forward(self, x):
@@ -45,7 +45,7 @@ class SolverCNN(nn.Module):
 
     def forward(self, x):
         return self.net(x)
-    
+
 solver = SolverCNN()
 physics_op = LaplacianOperator()
 optimizer = torch.optim.Adam(solver.parameters(), lr=0.001)
@@ -60,5 +60,5 @@ for epoch in range(1000):
     optimizer.step()
 
     if epoch % 100 == 0:
-        print(f"Epoch {epoch}, Physics Error: {loss.item():.6f}")    
+        print(f"Epoch {epoch}, Physics Error: {loss.item():.6f}")
 

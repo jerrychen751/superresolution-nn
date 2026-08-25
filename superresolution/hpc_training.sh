@@ -4,13 +4,13 @@
 #SBATCH --partition=coe-gpu
 #SBATCH --qos=coe-ice
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:h200:2              # H200, 141GB HBM3e per GPU
-#SBATCH --ntasks-per-node=1            # Stays 1; torchrun spawns child processes equal to number of GPUs (tasks = GPU ct)
-#SBATCH --cpus-per-task=5               # nproc_per_node * (num_workers + 1)
+#SBATCH --gres=gpu:h200:2 # H200, 141GB HBM3e per GPU
+#SBATCH --ntasks-per-node=1 # Stays 1; torchrun spawns child processes equal to number of GPUs (tasks = GPU ct)
+#SBATCH --cpus-per-task=5 # nproc_per_node * (num_workers + 1)
 #SBATCH --mem=32G
-#SBATCH --time=08:00:00                # 2 gpus * 480 min = 960 gpu-min, coe-ice qos max per job
-#SBATCH --output=logs/%j.out           # stdout -> logs/<jobid>.out
-#SBATCH --error=logs/%j.err            # stderr -> logs/<jobid>.err
+#SBATCH --time=08:00:00 # 2 gpus * 480 min = 960 gpu-min, coe-ice qos max per job
+#SBATCH --output=logs/%j.out # stdout -> logs/<jobid>.out
+#SBATCH --error=logs/%j.err # stderr -> logs/<jobid>.err
 
 # Usage:
 #   sbatch --export=MODEL=cnn hpc_training.sh
@@ -64,8 +64,7 @@ MASTER_PORT=29500
 export MASTER_ADDR MASTER_PORT
 
 # Step 3: Train model
-# Resolve torchrun's full path before srun, since srun spawns a new process
-# that may not inherit the conda env's PATH modifications.
+# Resolve torchrun's full path before srun, since srun spawns a new process that may not inherit the conda env's PATH modifications.
 TORCHRUN=$(which torchrun)
 echo "=== Step 3: Train (model=$MODEL) ==="
 srun $TORCHRUN \

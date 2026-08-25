@@ -89,11 +89,11 @@ def make_training_pair(
     """
     Returns (filtered_downsampled, correction) where correction = volume_averaged_DNS - filtered_downsampled.
     """
-    from ..preprocess import apply_gaussian_filter, volume_average
+    from ..preprocess import apply_gaussian_filter, average_volumes
 
     blurred = apply_gaussian_filter(dns_velocity, sigma=sigma)
     filtered_downsampled = blurred[::ds_step, ::ds_step, ::ds_step, :]
-    truth_coarse = volume_average(dns_velocity, ds_step)
+    truth_coarse = average_volumes(dns_velocity, ds_step)
     correction = truth_coarse - filtered_downsampled
     return filtered_downsampled, correction
 
