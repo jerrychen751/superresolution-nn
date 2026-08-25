@@ -37,7 +37,7 @@ def apply_gaussian_filter(velocity: np.ndarray, sigma: float):
 
 def average_volumes(velocity: np.ndarray, ds_step: int) -> np.ndarray:
     """
-    Coarsen a velocity field by averaging each (ds_step)^3 block into one value.
+    Coarsen a velocity field by averaging each (ds_step)^3 block into one value. Every spatial axis must be an exact multiple of ds_step, or the reshape raises ValueError.
     """
     nz, ny, nx, c = velocity.shape
     reshaped = velocity.reshape(  # (nz, ny, nx, c) -> (nz_blocks, dz, ny_blocks, dy, nx_blocks, dx, c), where dz/dy/dx are the within-block offsets of size ds_step
