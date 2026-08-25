@@ -12,14 +12,14 @@ u_corrected = u_coarse_upsampled + model(u_coarse_upsampled)
 
 ## If you're new
 
-One-time: get your accounts set up, install conda on PACE scratch, clone the repo, and plug your scratch path into two HPC config files. Then for each model, `download` once (ever) and `preprocess` once, then sbatch a training job. When that lands, run inference on PACE or copy `weights.pth` down and run it locally. Sections below walk through each piece.
+One-time: get your accounts set up, create the uv environment on PACE scratch, clone the repo, and plug your scratch path into three HPC config files. Then for each model, `download` once (ever) and `preprocess` once, then sbatch a training job. When that lands, run inference on PACE or copy `weights.pth` down and run it locally. Sections below walk through each piece.
 
 ## Prerequisites
 
 - **Georgia Tech PACE ICE account** — https://docs.pace.gatech.edu/
 - **JHTDB token** — register at http://turbulence.pha.jhu.edu/authtoken.aspx, then set it in `configs/default.yaml` under `download.jhtdb_token`
 - **GT VPN** when SSHing into PACE from off-campus
-- **Python 3.10+** locally, with conda or mamba
+- **[uv](https://docs.astral.sh/uv/)** locally — `curl -LsSf https://astral.sh/uv/install.sh | sh`. It installs its own Python, so no system Python or conda is needed.
 
 Add a PACE SSH alias to `~/.ssh/config` so the commands below work verbatim:
 
@@ -36,35 +36,20 @@ Local setup is only for running inference against downloaded weights or short de
 ```bash
 git clone <repo-url> pi-cnn
 cd pi-cnn
-conda create -n pi-cnn python=3.10
-conda activate pi-cnn
-pip install torch numpy scipy matplotlib pandas hydra-core omegaconf givernylocal torch_geometric
+bash setup_env.sh
+source .venv/bin/activate
 ```
+
+`setup_env.sh` reads `pyproject.toml` and `uv.lock`, so everyone gets the same versions. On Linux uv pulls the CUDA 12.6 torch wheels; on macOS and Windows it takes the CPU wheels from PyPI.
 
 Commands are run from the repo root. `env/local.yaml` sets `storage_root` to `${hydra:runtime.cwd}/superresolution`, so artifacts (data, weights, outputs, logs) land inside `superresolution/` — the pipeline's effective project root.
 
 ## PACE HPC setup (one-time, per user)
 
-### 1. Create a scratch directory and install conda there
-
-Home-filesystem quota is too small for a full conda env, so we install it on scratch and point Slurm jobs at that prefix.
+### 1. Clone the repo into $HOME
 
 ```bash
 ssh pace
-
-# Artifacts root — $storage_root in env/hpc.yaml
-mkdir -p /storage/ice1/3/9/<YOURUSER>/superresolution
-
-# Conda env, also on scratch because envs are multi-GB
-mkdir -p /storage/ice1/3/9/<YOURUSER>/conda/envs
-conda create --prefix /storage/ice1/3/9/<YOURUSER>/conda/envs/ai python=3.10
-conda activate /storage/ice1/3/9/<YOURUSER>/conda/envs/ai
-pip install torch numpy scipy hydra-core omegaconf givernylocal torch_geometric
-```
-
-### 2. Clone the repo into $HOME
-
-```bash
 mkdir -p $HOME/projects
 cd $HOME/projects
 git clone <repo-url> pi-cnn
@@ -72,12 +57,28 @@ git clone <repo-url> pi-cnn
 
 The code lives under home, the data and artifacts live on scratch — keep this split in mind when you're running commands.
 
+### 2. Create a scratch directory and build the environment there
+
+Home-filesystem quota is too small for the venv, uv's wheel cache, or the interpreter uv downloads, so all three go on scratch and Slurm jobs point at that prefix.
+
+```bash
+# Artifacts root — $storage_root in env/hpc.yaml
+mkdir -p /storage/ice1/3/9/<YOURUSER>/superresolution
+
+curl -LsSf https://astral.sh/uv/install.sh | sh
+cd $HOME/projects/pi-cnn
+VENV=/storage/ice1/3/9/<YOURUSER>/venvs/pi-cnn bash setup_env.sh
+```
+
+Point `VENV` outside `$HOME` and `setup_env.sh` puts the wheel cache and the interpreter beside it automatically. No `module load anaconda3` is needed: `uv python install` fetches its own CPython.
+
 ### 3. Update HPC-specific paths
 
-PACE doesn't export `$SCRATCH` into Slurm job environments, so we hardcode the scratch path in two files:
+PACE doesn't export `$SCRATCH` into Slurm job environments, so we hardcode the scratch path in three files:
 
 - `superresolution/configs/env/hpc.yaml` — set `storage_root: /storage/ice1/3/9/<YOURUSER>/superresolution`
-- `superresolution/hpc_training.sh` — set `CONDA_ENV=/storage/ice1/3/9/<YOURUSER>/conda/envs/ai`
+- `superresolution/hpc_training.sh` — set `VENV=/storage/ice1/3/9/<YOURUSER>/venvs/pi-cnn`
+- `superresolution/hpc_preprocess.sh` — set the same `VENV`
 
 ### 4. (Optional) Symlink scratch artifacts into the code dir
 
@@ -96,7 +97,7 @@ The `logs-csv` alias is there to avoid colliding with the `superresolution/logs/
 
 ## Getting the data
 
-On PACE, with the conda env activated:
+On PACE, with the venv activated:
 
 ```bash
 cd $HOME/projects/pi-cnn
@@ -110,7 +111,16 @@ for MODEL in cnn upsample_cnn closure_cnn fno gnn; do
 done
 ```
 
-Download is slow (network-bound on JHTDB) but only happens once. Preprocess is safe to rerun — if the train/val/test pairs are already on disk, it bails immediately.
+Download is slow (network-bound on JHTDB) but only happens once. Preprocess is safe to rerun — each pair already on disk is skipped, so a job killed at wall time resumes where it stopped.
+
+The loop above runs on the login node. To run it as a batch job instead:
+
+```bash
+cd $HOME/projects/pi-cnn/superresolution
+sbatch hpc_preprocess.sh
+```
+
+The `cd` matters: `#SBATCH --output=logs/%j.out` resolves against the directory you submit from, and Slurm does not create it. Either way, download must have run first, because preprocess exits non-zero when the raw directory is empty.
 
 ## Training
 
@@ -194,7 +204,8 @@ The **code** (git-cloned repo) and the **artifacts** (data, weights, logs) are o
 │   ├── configs/                                Hydra YAMLs
 │   ├── models/                                 five model files
 │   ├── logs/                                   Slurm stdout (e.g., 5016418.out)
-│   └── hpc_training.sh                         sbatch entry point
+│   ├── hpc_training.sh                         sbatch entry point: preprocess + train one model
+│   └── hpc_preprocess.sh                       sbatch entry point: preprocess all five models
 └── CLAUDE.md
 
 /storage/ice1/3/9/jchen3421/superresolution/             ARTIFACTS — scratch filesystem
