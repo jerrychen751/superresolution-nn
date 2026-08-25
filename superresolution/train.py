@@ -230,25 +230,17 @@ def train_eval(cfg):
             csv_file.flush()
 
         # Save the model at checkpoints, as well as loss stats
-        if epoch % 50 == 0:
-            if not using_ddp or dist.get_rank() == 0:
-                state_dict = model.module.state_dict() if using_ddp else model.state_dict()
-                torch.save(state_dict, checkpoints_dir / f"checkpoint_epoch_{epoch}.pth")
-
-            if using_ddp:
-                # Block other processes until all reach this point; all ranks should hit this
-                dist.barrier()
+        if epoch % 50 == 0 and is_primary:
+            state_dict = model.module.state_dict() if using_ddp else model.state_dict()
+            torch.save(state_dict, checkpoints_dir / f"checkpoint_epoch_{epoch}.pth")
 
         # Save the best epoch's weights
         if val_loss < best_loss:
             best_loss = val_loss
 
-            if not using_ddp or dist.get_rank() == 0:
+            if is_primary:
                 state_dict = model.module.state_dict() if using_ddp else model.state_dict()
                 torch.save(state_dict, weights_dir / "weights.pth")
-
-            if using_ddp:
-                dist.barrier()
 
         scheduler.step() # adjust LR before the next epoch
 
@@ -256,6 +248,7 @@ def train_eval(cfg):
         csv_file.close()
 
     if using_ddp:
+        dist.barrier()
         dist.destroy_process_group()
 
 if __name__ == '__main__':

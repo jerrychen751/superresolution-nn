@@ -95,13 +95,12 @@ if epoch % 50 == 0:
             "val_loss": val_loss
         }
         torch.save(checkpoint, f"checkpoint_epoch_{epoch}.pth")
-
-    if using_ddp:
-        # Block other processes until all reach this point; all ranks should hit this
-        dist.barrier()
 ```
+
+Both ranks evaluate `epoch % 50 == 0` on the same integer, so no barrier is needed here. One barrier before teardown stops a rank from destroying the communicator while rank 0 is still writing.
 
 ```python
 if using_ddp:
+    dist.barrier()
     dist.destroy_process_group()
 ```
