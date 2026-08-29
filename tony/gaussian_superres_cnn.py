@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Subset
 import matplotlib.pyplot as plt
 from PIL import Image
 import torchvision.transforms as T
-
+# Learning how CNN perform for image data (train with MNIST and test with random B&W images)
 # ----------------------------
 # Parameters
 # ----------------------------
