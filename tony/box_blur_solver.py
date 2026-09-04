@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # ----------------------------
 # Load Test image
 # ----------------------------
-name = "buzz_real.jpg"  # Change this to the image you want to test
+name = "tech_tower.jpg"  # Change this to the image you want to test
 
 # Use cv2.IMREAD_COLOR_RGB for color images, cv2.IMREAD_GRAYSCALE for grayscale images
 img = cv2.imread("tony/images/" + name, cv2.IMREAD_GRAYSCALE)
