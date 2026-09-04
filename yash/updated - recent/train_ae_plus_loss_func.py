@@ -277,7 +277,7 @@ from data_utils import fetch_jhtdb_channel
 AUTH_TOKEN = "edu.gatech.jerrychen-6b7455a7" 
 LATENT_DIM = 128
 LR = 1e-3
-EPOCHS = 800
+EPOCHS = 8000
 BATCH_SIZE = 16
 SAVE_PATH = "cae_turbulent_model.pth"
 PLOT_PATH = "ae_loss_log_curve.png"
