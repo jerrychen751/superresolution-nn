@@ -257,7 +257,7 @@ The **code** (git-cloned repo) and the **artifacts** (data, weights, logs) are o
 │   ├── checkpoints/                            checkpoints_dir — if you ran training locally
 │   │   └── {model}/checkpoint_epoch_{N}.pth
 │   └── logs/                                   logs_dir — per-epoch CSVs (and Slurm stdout on HPC)
-├── jerry/, tony/, yash/                        team experiment sandboxes
+├── jerry/, superresolution_experiments/, yash/ team experiment sandboxes
 └── CLAUDE.md
 ```
 

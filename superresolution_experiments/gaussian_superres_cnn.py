@@ -145,7 +145,7 @@ plt.show()
 # Test on custom image
 # ----------------------------
 
-image_path = "tony/images/buzz_real.jpg"  # <-- change to your file
+image_path = "superresolution_experiments/images/buzz_real.jpg"  # <-- change to your file
 
 # Load image
 img = Image.open(image_path).convert("L")  # convert to grayscale
