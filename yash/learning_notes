@@ -1,9 +1,0 @@
-Tensor: multi-dimensional array of numbers
-    > can represent images, linear algebra operations, etc
-    > can be used in computations for neural networks and PDEs
-    > in PINNs they represent:
-        1. spatial coordinates
-        2. network outputs
-            output = f(input), where f is the neural network with certain parameters
-        3. derivatives
-    
