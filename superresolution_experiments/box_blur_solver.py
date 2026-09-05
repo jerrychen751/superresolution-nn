@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 name = "tech_tower.jpg"  # Change this to the image you want to test
 
 # Use cv2.IMREAD_COLOR_RGB for color images, cv2.IMREAD_GRAYSCALE for grayscale images
-img = cv2.imread("tony/images/" + name, cv2.IMREAD_GRAYSCALE)
+img = cv2.imread("superresolution_experiments/images/" + name, cv2.IMREAD_GRAYSCALE)
 
 n = 64    # Change this to the desired size (e.g., 49, 64, 81, 100)
 img = cv2.resize(img, (n, n), interpolation=cv2.INTER_AREA)

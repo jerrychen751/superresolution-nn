@@ -1,4 +1,29 @@
-# superresolution-nn — turbulence super-resolution pipeline
+# superresolution-nn
+
+`superresolution-nn` is a PyTorch project for turbulence super-resolution. The primary
+pipeline learns to reconstruct fine-resolution direct numerical simulation
+(DNS) velocity fields from coarse observations obtained from the JHU Turbulence
+Database (JHTDB).
+
+The maintained training pipeline lives in [`src/superresolution/`](src/superresolution/).
+It supports 3D CNN, upsampling CNN, closure CNN, Fourier neural operator (FNO),
+and graph neural network (GNN) variants. The other top-level team folders hold
+useful prototypes, notebooks, and prior investigations; they are not the
+canonical training path.
+
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| [`src/superresolution/`](src/superresolution/) | Maintained download, preprocessing, training, and inference pipeline. |
+| [`src/superresolution/configs/`](src/superresolution/configs/) | Hydra model and environment configurations. |
+| [`src/superresolution/models/`](src/superresolution/models/) | Model architectures plus their dataset and input/output adapters. |
+| [`scripts/`](scripts/) | Environment setup and Slurm entry points. |
+| [`docs/`](docs/) | Design notes for models and distributed training. |
+| [`superresolution_experiments/`](superresolution_experiments/) | Image-filtering, JHTDB, and GNN experiments retained for reference. |
+| [`jerry/`](jerry/) | Individual prototypes and learning notebooks. |
+| [`yash/`](yash/) | Autoencoder/GAN exploration and archived comparison work. |
+| [`data/`](data/) | Local data cache; generated data is ignored by Git. |
 
 Five neural architectures (three 3D CNNs + a Fourier Neural Operator + a Graph Neural Network) learning to reconstruct fine-resolution DNS turbulence from coarse observations, trained against the JHU Turbulence Database.
 
@@ -321,3 +346,17 @@ python -m superresolution.inference --config-name=upsample_cnn \
 
 `num_cubes` in `download.py` is unchanged — you still download the full set of raw cubes; the split happens entirely during preprocessing.
 
+## Contributing
+
+Keep new work easy to reproduce and easy to find:
+
+1. Make pipeline changes in `src/superresolution/`, not in an experiment folder.
+2. Use a model-specific Hydra config for tunable parameters rather than
+   hardcoding values in Python.
+3. Keep paths derived from the config values such as `cfg.processed_data_dir`;
+   Hydra changes the working directory for each run.
+4. Record the model, config overrides, dataset source, and result summary when
+   sharing an experiment or opening a pull request.
+5. Add focused tests when changing reusable data transformations, model shapes,
+   or training behavior. There is currently no committed automated test suite,
+   so also run a small local smoke test or validate the composed Hydra config.
