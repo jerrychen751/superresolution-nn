@@ -1,5 +1,0 @@
-# @package _global_
-# Merge contents at the top level of the composed config instead of under the "env" key.
-# Convention: commands are run from the repo root (so `python -m superresolution.*` resolves),
-# and artifacts live under superresolution/ — the pipeline's effective project root.
-storage_root: ${hydra:runtime.cwd}/superresolution

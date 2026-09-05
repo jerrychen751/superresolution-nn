@@ -1,6 +1,6 @@
 This project uses [Hydra](https://hydra.cc/) (from Meta) to manage experiment configuration. It composes nested YAML files into one runtime config object and lets you override individual fields from the CLI — handy for quick experimentation.
 
-Both are pinned in `pyproject.toml` and installed by `setup_env.sh`. To add them to an environment by hand:
+Both are pinned in `pyproject.toml` and installed by `scripts/hpc_env_setup.sh`. To add them to an environment by hand:
 ```
 uv add hydra-core==1.3.2 omegaconf==2.3.0
 ```
@@ -50,7 +50,7 @@ Each env file sets `storage_root` to an absolute path. `default.yaml` interpolat
 ```yaml
 # env/local.yaml
 # @package _global_
-storage_root: ${hydra:runtime.cwd}/superresolution   # artifacts live under superresolution/ — the effective project root
+storage_root: ${hydra:runtime.cwd}   # the repo root, so artifacts land beside src/
 ```
 
 ```yaml
@@ -95,7 +95,7 @@ Switch environments by overriding the env group:
 python -m superresolution.train --config-name=cnn env=hpc
 ```
 
-On HPC, `hpc_training.sh` passes `env=hpc` to every step so all artifacts land on scratch automatically.
+On HPC, `scripts/hpc_training.sh` passes `env=hpc` to every step so all artifacts land on scratch automatically.
 
 ### Inspecting a composed config
 

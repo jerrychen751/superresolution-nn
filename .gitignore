@@ -34,8 +34,8 @@ __pycache__/
 venv/
 
 # Slurm job output
-superresolution/logs/*.out
-superresolution/logs/*.err
+logs/*.out
+logs/*.err
 
 # Claude Code
 CLAUDE.md

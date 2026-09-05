@@ -15,8 +15,8 @@
 
 set -euo pipefail
 
-PROJECT_DIR=$HOME/projects/pi-cnn
-VENV=/storage/ice1/3/9/jchen3421/venvs/pi-cnn
+PROJECT_DIR=$HOME/projects/superresolution-nn
+VENV=/storage/ice1/3/9/jchen3421/venvs/superresolution-nn
 
 export PATH=$VENV/bin:$PATH
 

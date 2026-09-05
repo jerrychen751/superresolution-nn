@@ -1,1 +1,1 @@
-# pi-cnn
+# superresolution-nn

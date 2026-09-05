@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Setup script for the pi-cnn project.
+# Setup script for the superresolution-nn project.
 # Creates a uv-managed virtual environment and installs every dependency from pyproject.toml.
 #
 # Usage:
 #   On PACE ICE:
-#     VENV=/storage/ice1/3/9/jchen3421/venvs/pi-cnn bash setup_env.sh
+#     VENV=/storage/ice1/3/9/jchen3421/venvs/superresolution-nn bash scripts/hpc_env_setup.sh
 #
 #   On a personal machine:
-#     bash setup_env.sh
+#     bash scripts/hpc_env_setup.sh
 
 set -euo pipefail
 
-VENV="${VENV:-$PWD/.venv}"
+PROJECT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$PROJECT_DIR"
+
+VENV="${VENV:-$PROJECT_DIR/.venv}"
 
 if ! command -v uv >/dev/null 2>&1; then
     echo "Installing uv ..."
@@ -36,6 +39,8 @@ esac
 echo "Creating environment at $VENV ..."
 uv python install 3.11
 uv sync --python 3.11 --group extras
+
+uv run python -c "import superresolution, pathlib; print('superresolution resolves from', pathlib.Path(superresolution.__file__).parent)"
 
 echo ""
 echo "Done. Activate with:"

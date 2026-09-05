@@ -13,9 +13,9 @@
 #SBATCH --error=logs/%j.err # stderr -> logs/<jobid>.err
 
 # Usage:
-#   sbatch --export=MODEL=cnn hpc_training.sh
-#   sbatch --export=MODEL=closure_cnn hpc_training.sh
-#   sbatch --export=MODEL=upsample_cnn hpc_training.sh
+#   sbatch --export=MODEL=cnn scripts/hpc_training.sh
+#   sbatch --export=MODEL=closure_cnn scripts/hpc_training.sh
+#   sbatch --export=MODEL=upsample_cnn scripts/hpc_training.sh
 #
 # MODEL selects which model variant to preprocess and train.
 # preprocess.py reads cfg.model.name directly to pick the matching make_training_pair.
@@ -26,15 +26,15 @@ set -euo pipefail
 
 # Validate MODEL is set
 if [ -z "${MODEL:-}" ]; then
-    echo "ERROR: MODEL environment variable not set. Use: sbatch --export=MODEL=<variant> hpc_training.sh"
+    echo "ERROR: MODEL environment variable not set. Use: sbatch --export=MODEL=<variant> scripts/hpc_training.sh"
     exit 1
 fi
 echo "Model variant: $MODEL"
 
 # Code lives on NFS home; data/checkpoints/weights/logs live on scratch (configured via env=hpc).
 # Hardcoded PACE scratch path — $SCRATCH isn't exported to Slurm jobs.
-PROJECT_DIR=$HOME/projects/pi-cnn
-VENV=/storage/ice1/3/9/jchen3421/venvs/pi-cnn
+PROJECT_DIR=$HOME/projects/superresolution-nn
+VENV=/storage/ice1/3/9/jchen3421/venvs/superresolution-nn
 
 # Environment
 export PATH=$VENV/bin:$PATH

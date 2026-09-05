@@ -1,4 +1,4 @@
-# Superresolution — turbulence super-resolution pipeline
+# superresolution-nn — turbulence super-resolution pipeline
 
 Five neural architectures (three 3D CNNs + a Fourier Neural Operator + a Graph Neural Network) learning to reconstruct fine-resolution DNS turbulence from coarse observations, trained against the JHU Turbulence Database.
 
@@ -17,7 +17,7 @@ One-time: get your accounts set up, create the uv environment on PACE scratch, c
 ## Prerequisites
 
 - **Georgia Tech PACE ICE account** — https://docs.pace.gatech.edu/
-- **JHTDB token** — register at http://turbulence.pha.jhu.edu/authtoken.aspx, then set it in `configs/default.yaml` under `download.jhtdb_token`
+- **JHTDB token** — register at http://turbulence.pha.jhu.edu/authtoken.aspx, then set it in `src/superresolution/configs/default.yaml` under `download.jhtdb_token`
 - **GT VPN** when SSHing into PACE from off-campus
 - **[uv](https://docs.astral.sh/uv/)** locally — `curl -LsSf https://astral.sh/uv/install.sh | sh`. It installs its own Python, so no system Python or conda is needed.
 
@@ -34,15 +34,15 @@ Host pace
 Local setup is only for running inference against downloaded weights or short debug runs on a tiny sample. All real training stays on HPC.
 
 ```bash
-git clone <repo-url> pi-cnn
-cd pi-cnn
-bash setup_env.sh
+git clone <repo-url> superresolution-nn
+cd superresolution-nn
+bash scripts/hpc_env_setup.sh
 source .venv/bin/activate
 ```
 
-`setup_env.sh` reads `pyproject.toml` and `uv.lock`, so everyone gets the same versions. On Linux uv pulls the CUDA 12.6 torch wheels; on macOS and Windows it takes the CPU wheels from PyPI.
+`scripts/hpc_env_setup.sh` reads `pyproject.toml` and `uv.lock`, so everyone gets the same versions. On Linux uv pulls the CUDA 12.6 torch wheels; on macOS and Windows it takes the CPU wheels from PyPI.
 
-Commands are run from the repo root. `env/local.yaml` sets `storage_root` to `${hydra:runtime.cwd}/superresolution`, so artifacts (data, weights, outputs, logs) land inside `superresolution/` — the pipeline's effective project root.
+`scripts/hpc_env_setup.sh` also installs the `superresolution` package itself in editable mode, so `python -m superresolution.*` resolves from any directory. Commands are still run from the repo root, because `env/local.yaml` sets `storage_root` to `${hydra:runtime.cwd}` — artifacts (data, weights, outputs, logs) land beside `src/` at the repo root.
 
 ## PACE HPC setup (one-time, per user)
 
@@ -52,7 +52,7 @@ Commands are run from the repo root. `env/local.yaml` sets `storage_root` to `${
 ssh pace
 mkdir -p $HOME/projects
 cd $HOME/projects
-git clone <repo-url> pi-cnn
+git clone <repo-url> superresolution-nn
 ```
 
 The code lives under home, the data and artifacts live on scratch — keep this split in mind when you're running commands.
@@ -66,41 +66,41 @@ Home-filesystem quota is too small for the venv, uv's wheel cache, or the interp
 mkdir -p /storage/ice1/3/9/<YOURUSER>/superresolution
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
-cd $HOME/projects/pi-cnn
-VENV=/storage/ice1/3/9/<YOURUSER>/venvs/pi-cnn bash setup_env.sh
+cd $HOME/projects/superresolution-nn
+VENV=/storage/ice1/3/9/<YOURUSER>/venvs/superresolution-nn bash scripts/hpc_env_setup.sh
 ```
 
-Point `VENV` outside `$HOME` and `setup_env.sh` puts the wheel cache and the interpreter beside it automatically. No `module load anaconda3` is needed: `uv python install` fetches its own CPython.
+Point `VENV` outside `$HOME` and `scripts/hpc_env_setup.sh` puts the wheel cache and the interpreter beside it automatically. No `module load anaconda3` is needed: `uv python install` fetches its own CPython.
 
 ### 3. Update HPC-specific paths
 
 PACE doesn't export `$SCRATCH` into Slurm job environments, so we hardcode the scratch path in three files:
 
-- `superresolution/configs/env/hpc.yaml` — set `storage_root: /storage/ice1/3/9/<YOURUSER>/superresolution`
-- `superresolution/hpc_training.sh` — set `VENV=/storage/ice1/3/9/<YOURUSER>/venvs/pi-cnn`
-- `superresolution/hpc_preprocess.sh` — set the same `VENV`
+- `src/superresolution/configs/env/hpc.yaml` — set `storage_root: /storage/ice1/3/9/<YOURUSER>/superresolution`
+- `scripts/hpc_training.sh` — set `VENV=/storage/ice1/3/9/<YOURUSER>/venvs/superresolution-nn`
+- `scripts/hpc_preprocess.sh` — set the same `VENV`
 
 ### 4. (Optional) Symlink scratch artifacts into the code dir
 
 The config uses absolute paths, so nothing breaks without symlinks — but they make it vastly easier to `ls` / `grep` results from inside the code checkout:
 
 ```bash
-cd $HOME/projects/pi-cnn
-ln -s /storage/ice1/3/9/<YOURUSER>/superresolution/data        data
+cd $HOME/projects/superresolution-nn
+ln -s /storage/ice1/3/9/<YOURUSER>/superresolution/data        data-scratch
 ln -s /storage/ice1/3/9/<YOURUSER>/superresolution/weights     weights
 ln -s /storage/ice1/3/9/<YOURUSER>/superresolution/checkpoints checkpoints
 ln -s /storage/ice1/3/9/<YOURUSER>/superresolution/outputs     outputs
 ln -s /storage/ice1/3/9/<YOURUSER>/superresolution/logs        logs-csv
 ```
 
-The `logs-csv` alias is there to avoid colliding with the `superresolution/logs/` directory already in the repo — that one holds Slurm stdout, and the per-epoch CSVs live separately under `$storage_root/logs/`.
+The `data-scratch` and `logs-csv` aliases avoid two directories the repo already tracks: `data/` (MNIST fixtures) and `logs/` (Slurm stdout). The per-epoch CSVs live separately under `$storage_root/logs/`.
 
 ## Getting the data
 
 On PACE, with the venv activated:
 
 ```bash
-cd $HOME/projects/pi-cnn
+cd $HOME/projects/superresolution-nn
 
 # Pull raw DNS cubes from JHTDB into $storage_root/data/raw/
 python -m superresolution.download env=hpc
@@ -116,8 +116,8 @@ Download is slow (network-bound on JHTDB) but only happens once. Preprocess is s
 The loop above runs on the login node. To run it as a batch job instead:
 
 ```bash
-cd $HOME/projects/pi-cnn/superresolution
-sbatch hpc_preprocess.sh
+cd $HOME/projects/superresolution-nn
+sbatch scripts/hpc_preprocess.sh
 ```
 
 The `cd` matters: `#SBATCH --output=logs/%j.out` resolves against the directory you submit from, and Slurm does not create it. Either way, download must have run first, because preprocess exits non-zero when the raw directory is empty.
@@ -127,9 +127,9 @@ The `cd` matters: `#SBATCH --output=logs/%j.out` resolves against the directory 
 Submit a training job via Slurm, passing the model variant through the `MODEL` env var:
 
 ```bash
-cd $HOME/projects/pi-cnn/superresolution
-sbatch --export=MODEL=upsample_cnn hpc_training.sh
-sbatch --export=MODEL=fno          hpc_training.sh
+cd $HOME/projects/superresolution-nn
+sbatch --export=MODEL=upsample_cnn scripts/hpc_training.sh
+sbatch --export=MODEL=fno          scripts/hpc_training.sh
 # ...
 ```
 
@@ -161,14 +161,14 @@ python -m superresolution.inference --config-name=upsample_cnn env=hpc \
 
 ## Adding a new model variant
 
-Look at `models/cnn.py` as the reference — everything below is the pattern it follows.
+Look at `src/superresolution/models/cnn.py` as the reference — everything below is the pattern it follows.
 
-1. Create `superresolution/models/<name>.py` with four things in it:
+1. Create `src/superresolution/models/<name>.py` with four things in it:
    - the `nn.Module` itself
    - a `<Name>Dataset(Dataset)` class that loads `(input, target)` pairs and converts to whatever tensor or graph format the model expects
    - a `make_training_pair(dns_velocity, sigma, ds_step, **kwargs)` function — `preprocess.py` imports this dynamically
    - a `build_inference_fn(model, sample_shape, device)` factory that returns a `predict(input_array) -> prediction_array` closure — `inference.py` imports this dynamically
-2. Create `superresolution/configs/<name>.yaml`:
+2. Create `src/superresolution/configs/<name>.yaml`:
 
    ```yaml
    defaults:
@@ -191,21 +191,23 @@ Look at `models/cnn.py` as the reference — everything below is the pattern it 
 
 ## Reference: project layout
 
-`storage_root` (set by `configs/env/local.yaml` or `configs/env/hpc.yaml`) is the single knob that picks where data and artifacts live. Every other path interpolates off it in `configs/default.yaml`.
+`storage_root` (set by `src/superresolution/configs/env/local.yaml` or `env/hpc.yaml`) is the single knob that picks where data and artifacts live. Every other path interpolates off it in `configs/default.yaml`.
 
 ### HPC layout (PACE ICE, where the real data/compute lives)
 
 The **code** (git-cloned repo) and the **artifacts** (data, weights, logs) are on different filesystems:
 
 ```
-~/projects/pi-cnn/                              CODE — home filesystem
-├── superresolution/
+~/projects/superresolution-nn/                  CODE — home filesystem
+├── src/superresolution/
 │   ├── *.py                                    pipeline scripts
 │   ├── configs/                                Hydra YAMLs
-│   ├── models/                                 five model files
-│   ├── logs/                                   Slurm stdout (e.g., 5016418.out)
+│   └── models/                                 five model files
+├── scripts/
 │   ├── hpc_training.sh                         sbatch entry point: preprocess + train one model
 │   └── hpc_preprocess.sh                       sbatch entry point: preprocess all five models
+├── logs/                                       Slurm stdout (e.g., 5016418.out)
+├── docs/
 └── CLAUDE.md
 
 /storage/ice1/3/9/jchen3421/superresolution/             ARTIFACTS — scratch filesystem
@@ -241,22 +243,24 @@ The **code** (git-cloned repo) and the **artifacts** (data, weights, logs) are o
 
 ### Local layout (your Mac)
 
-`superresolution/` is the effective project root. `env/local.yaml` sets `storage_root: ${hydra:runtime.cwd}/superresolution`, so running `python -m superresolution.*` from the repo root places every artifact inside `superresolution/`:
+The repo root is `storage_root`. `env/local.yaml` sets `storage_root: ${hydra:runtime.cwd}`, so running `python -m superresolution.*` from the repo root places every artifact beside `src/`:
 
 ```
-/Users/jerry/coding/pi-cnn/                     repo root (contains team sandboxes + main pipeline)
-├── superresolution/                            ← storage_root on local
-│   ├── *.py, configs/, models/                 code
-│   ├── data/                                   raw_data_dir + processed_data_dir (if populated)
-│   │   ├── raw/
-│   │   └── processed/{model}/{train,val,test}/
-│   ├── weights/                                weights_dir — copied from HPC after training
-│   │   └── {model}/weights.pth
-│   ├── outputs/                                outputs_dir — local inference predictions
-│   │   └── {model}/prediction_t{XXXX}.npy
-│   ├── checkpoints/                            checkpoints_dir — if you ran training locally
-│   │   └── {model}/checkpoint_epoch_{N}.pth
-│   └── logs/                                   logs_dir — per-epoch CSVs (and Slurm stdout on HPC)
+/Users/jerry/coding/superresolution-nn/         repo root — also storage_root on local
+├── src/superresolution/                        code
+│   └── *.py, configs/, models/
+├── scripts/                                    sbatch entry points
+├── docs/
+├── data/                                       raw_data_dir + processed_data_dir (if populated)
+│   ├── raw/
+│   └── processed/{model}/{train,val,test}/
+├── weights/                                    weights_dir — copied from HPC after training
+│   └── {model}/weights.pth
+├── outputs/                                    outputs_dir — local inference predictions
+│   └── {model}/prediction_t{XXXX}.npy
+├── checkpoints/                                checkpoints_dir — if you ran training locally
+│   └── {model}/checkpoint_epoch_{N}.pth
+├── logs/                                       logs_dir — per-epoch CSVs (and Slurm stdout on HPC)
 ├── jerry/, tony/, yash/                        team experiment sandboxes
 └── CLAUDE.md
 ```

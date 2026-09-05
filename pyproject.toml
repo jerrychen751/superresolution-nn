@@ -1,5 +1,5 @@
 [project]
-name = "pi-cnn"
+name = "superresolution-nn"
 version = "0.1.0"
 description = "Physics-informed CNN for turbulence super-resolution"
 requires-python = ">=3.11"
@@ -43,8 +43,13 @@ extras = [
     "einops",
 ]
 
-[tool.uv]
-package = false
+[build-system]
+requires = ["uv_build>=0.11,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "superresolution"
+module-root = "src"
 
 # PyTorch with CUDA 12.6 on Linux (PACE). Every other platform takes the default PyPI wheels, which are CPU-only.
 [[tool.uv.index]]
