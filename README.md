@@ -216,7 +216,7 @@ Look at `src/superresolution/models/cnn.py` as the reference — everything belo
 
 ## Reference: project layout
 
-`storage_root` (set by `src/superresolution/configs/env/local.yaml` or `env/hpc.yaml`) is the single knob that picks where data and artifacts live. Every other path interpolates off it in `configs/default.yaml`.
+`storage_root` (set by `src/superresolution/configs/env/local.yaml` or `src/superresolution/configs/env/hpc.yaml`) is the single knob that picks where data and artifacts live. Every other path interpolates off it in `src/superresolution/configs/default.yaml`.
 
 ### HPC layout (PACE ICE, where the real data/compute lives)
 

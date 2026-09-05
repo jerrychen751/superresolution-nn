@@ -1,4 +1,4 @@
 # @package _global_
 # Merge contents at the top level of the composed config instead of under the "env" key.
-# Convention: commands are run from the repo root, and artifacts live beside src/ at the repo root.
+# Convention: commands are run from the repo root, because storage_root resolves to the Hydra runtime cwd and every artifact path interpolates off it.
 storage_root: ${hydra:runtime.cwd}
