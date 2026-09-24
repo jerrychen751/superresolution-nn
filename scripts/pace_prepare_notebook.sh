@@ -77,7 +77,7 @@ cat <<EOF
 
 PACE preparation is complete.
 
-In JupyterLab:
+In Jupyter Notebook or JupyterLab:
   1. Refresh the page if the kernel is not visible.
   2. Open superresolution_experiments/cnn_training_template.ipynb.
   3. Save a copy with your name.

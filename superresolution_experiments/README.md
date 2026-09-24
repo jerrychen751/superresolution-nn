@@ -16,14 +16,14 @@ superresolution-nn.zip
 
 Downloaded and processed JHTDB data are not supposed to be inside this ZIP.
 
-## 2. Start JupyterLab on PACE
+## 2. Start Jupyter on PACE
 
 Connect to the GT VPN, open PACE Open OnDemand, and launch **Jupyter** with:
 
 | Setting | Recommended value |
 |---|---|
 | Python Environment | Anaconda3 2023.03 |
-| Jupyter Interface | JupyterLab |
+| Jupyter Interface | JupyterLab (recommended) or Jupyter Notebook |
 | Quality of Service | One available to your account, such as `coe-ice` |
 | Node Type | H200 HGX for fastest training; A40 is sufficient |
 | Nodes | 1 |
@@ -32,13 +32,15 @@ Connect to the GT VPN, open PACE Open OnDemand, and launch **Jupyter** with:
 | Memory Per Core | 8 GB |
 | Hours | 6 |
 
-The notebook uses one GPU. Requesting additional GPUs does not make it faster.
+Both interfaces run the same notebook on the same compute node. JupyterLab is
+recommended because its file browser and terminal are easier to use. The
+notebook uses one GPU; requesting additional GPUs does not make it faster.
 
 ## 3. Upload and unzip the repository
 
 In the PACE file browser, open your `scratch` folder and upload the ZIP.
 
-Open a terminal from the running JupyterLab session and paste:
+Open a terminal from the running Jupyter session and paste:
 
 ```bash
 cd ~/scratch
@@ -86,7 +88,7 @@ PACE preparation is complete.
 
 ## 5. Run the notebook
 
-In JupyterLab:
+In Jupyter Notebook or JupyterLab:
 
 1. Refresh the page.
 2. Open `superresolution_experiments/cnn_training_template.ipynb`.
@@ -128,7 +130,27 @@ The important files are:
 - `test_metrics.json`: baseline and CNN MSE/MAE
 - `experiment.json`: settings used for the run
 
-Closing your browser, sleeping your laptop, or disconnecting the VPN does not stop training. The PACE session continues until training finishes, an error occurs, or its requested wall time expires. Do not delete the session from **My Interactive Sessions** while training.
+Closing the browser or losing the VPN does not normally stop a healthy Jupyter
+kernel while its PACE interactive session is still running. However, do not
+treat an interactive notebook as guaranteed unattended execution. Training
+stops if the requested wall time expires, the kernel crashes or runs out of
+memory, or the PACE job is cancelled. A disconnected browser may also fail to
+show or save all output produced while it was away.
+
+For the safest click-to-run workflow, request more time than the expected run,
+keep the laptop awake and connected when practical, and do not delete the job
+from **My Interactive Sessions**. When reconnecting:
+
+1. Check **My Interactive Sessions**. If the Jupyter job is gone, its wall time
+   expired or the job ended.
+2. If the job remains, reconnect and check the **Running** kernels page.
+3. Check the result directory. `best_weights.pth` may exist even if the run did
+   not reach the final metrics cells.
+
+The current notebooks save the best validation weights during training, but
+they write `history.json` only after the full training loop and do not resume a
+partially completed run. Use a PACE batch job for training that must continue
+reliably without a browser.
 
 ## Should processed data be committed to Git?
 
@@ -149,5 +171,5 @@ Until shared storage is available, each member can run `pace_prepare_notebook.sh
 - **JHTDB HTTP 503:** leave the preparation command running. It waits and retries.
 - **Session ended:** launch another session and rerun the same preparation command.
 - **No data pairs:** preparation has not reached the verified 490/105/105 result.
-- **Kernel missing:** refresh JupyterLab after preparation finishes.
+- **Kernel missing:** refresh the Jupyter page after preparation finishes.
 - **CUDA unavailable:** verify that the PACE session requested one NVIDIA GPU and select `Python (superresolution-nn)`.
