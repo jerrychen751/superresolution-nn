@@ -1,0 +1,25 @@
+{
+  "experiment_name": "tony_cnn_laptop_smoke",
+  "author": "Tony",
+  "architecture_change": "Three Conv3d layers with 8 hidden channels, ReLU activations, and circular padding.",
+  "hypothesis": "The small CNN should complete end-to-end and reduce test MSE below the uncorrected coarse-upsampled baseline.",
+  "processed_data_dir": "c:\\personal-projects\\superresolution-nn\\superresolution_experiments\\laptop_data\\data\\processed\\cnn",
+  "sample_limits": {
+    "train": 4,
+    "val": 1,
+    "test": 1
+  },
+  "epochs": 20,
+  "batch_size": 1,
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "seed": 42,
+  "trainable_parameters": 3043,
+  "best_epoch": 20,
+  "best_val_mse": 0.038495685905218124,
+  "baseline_mse": 0.07485764225323994,
+  "model_mse": 0.03349542866150538,
+  "baseline_mae": 0.2226185997327169,
+  "model_mae": 0.1461742321650187,
+  "mse_improvement_percent": 55.254496864606175
+}
