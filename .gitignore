@@ -21,6 +21,7 @@ __pycache__/
 
 # Jupyter
 .ipynb_checkpoints/
+superresolution_experiments/runs/
 
 # OS
 .DS_Store
