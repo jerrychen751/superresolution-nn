@@ -8,13 +8,10 @@ The notebook takes real high-resolution JHTDB velocity cubes, creates an artific
 
 ## 1. Make the ZIP on your laptop
 
-The repository may be called either `pi-cnn` or `superresolution-nn` on someone's laptop. The folder name does not affect the code.
-
-Compress the whole repository folder so the ZIP contains one top-level folder. The ZIP may have any of these names:
+Compress the whole `superresolution-nn` repository folder so the ZIP contains one top-level folder with the same name. Name the archive:
 
 ```text
 superresolution-nn.zip
-pi-cnn.zip
 ```
 
 Downloaded and processed JHTDB data are not supposed to be inside this ZIP.
@@ -41,18 +38,14 @@ The notebook uses one GPU. Requesting additional GPUs does not make it faster.
 
 In the PACE file browser, open your `scratch` folder and upload the ZIP.
 
-Open a terminal from the running JupyterLab session. In the first line, enter the exact filename you uploaded:
+Open a terminal from the running JupyterLab session and paste:
 
 ```bash
 cd ~/scratch
-ZIP_FILE=superresolution-nn.zip
-REPO_DIR=$(unzip -Z1 "$ZIP_FILE" | head -n 1 | cut -d/ -f1)
-unzip -o "$ZIP_FILE"
-cd "$REPO_DIR"
+unzip -o superresolution-nn.zip
+cd superresolution-nn
 ls README.md pyproject.toml scripts superresolution_experiments
 ```
-
-For example, use `ZIP_FILE=pi-cnn.zip` if that is the uploaded filename. These commands detect whether the folder inside is named `pi-cnn` or `superresolution-nn`.
 
 The final command should list all four names without an error.
 
