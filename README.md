@@ -1,4 +1,4 @@
-# pi-cnn
+# superresolution-nn
 
 This repository contains the team's computational fluid dynamics and machine-learning experiments. The maintained Python package in `src/superresolution/` downloads JHTDB velocity fields, prepares coarse-to-fine training pairs, and trains super-resolution models.
 

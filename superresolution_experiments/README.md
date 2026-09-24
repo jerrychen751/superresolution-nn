@@ -8,11 +8,12 @@ The notebook takes real high-resolution JHTDB velocity cubes, creates an artific
 
 ## 1. Make the ZIP on your laptop
 
-The ZIP must contain one top-level folder named `pi-cnn`.
+The repository may be called either `pi-cnn` or `superresolution-nn` on someone's laptop. The folder name does not affect the code.
 
-On Windows, go to `C:\personal-projects`, right-click the `pi-cnn` folder, and choose **Compress to ZIP file**. Name the archive:
+Compress the whole repository folder so the ZIP contains one top-level folder. The ZIP may have any of these names:
 
 ```text
+superresolution-nn.zip
 pi-cnn.zip
 ```
 
@@ -38,16 +39,20 @@ The notebook uses one GPU. Requesting additional GPUs does not make it faster.
 
 ## 3. Upload and unzip the repository
 
-In the PACE file browser, open your `scratch` folder and upload `pi-cnn.zip`.
+In the PACE file browser, open your `scratch` folder and upload the ZIP.
 
-Open a terminal from the running JupyterLab session and paste:
+Open a terminal from the running JupyterLab session. In the first line, enter the exact filename you uploaded:
 
 ```bash
 cd ~/scratch
-unzip -o pi-cnn.zip
-cd pi-cnn
+ZIP_FILE=superresolution-nn.zip
+REPO_DIR=$(unzip -Z1 "$ZIP_FILE" | head -n 1 | cut -d/ -f1)
+unzip -o "$ZIP_FILE"
+cd "$REPO_DIR"
 ls README.md pyproject.toml scripts superresolution_experiments
 ```
+
+For example, use `ZIP_FILE=pi-cnn.zip` if that is the uploaded filename. These commands detect whether the folder inside is named `pi-cnn` or `superresolution-nn`.
 
 The final command should list all four names without an error.
 
@@ -67,7 +72,7 @@ It automatically:
 4. Preprocesses the cubes into CNN input/answer pairs.
 5. Verifies the 490/105/105 train/validation/test split.
 
-This may take hours the first time. If the session ends, start another PACE session, return to `~/scratch/pi-cnn`, and run the same command again. Completed work is reused.
+This may take hours the first time. If the session ends, start another PACE session, return to the extracted repository folder and run the same command again. Completed work is reused.
 
 If you already prepared the data from an older copy of the repository, it remains under:
 
