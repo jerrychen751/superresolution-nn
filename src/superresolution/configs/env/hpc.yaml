@@ -1,3 +1,3 @@
 # @package _global_
-# Hardcoded PACE scratch path (per-user, stable across sessions) — $SCRATCH isn't exported to Slurm jobs.
-storage_root: /storage/ice1/3/9/jchen3421/superresolution
+# Every PACE user supplies their own scratch artifact directory.
+storage_root: ${oc.env:SUPERRES_STORAGE_ROOT}

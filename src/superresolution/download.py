@@ -71,18 +71,45 @@ def download_cubes(
         print(f"saved {out_path}  shape={velocity.shape}")
 
 
+def select_time_steps(max_timesteps: int, num_cubes: int) -> list[int]:
+    """Return exactly num_cubes approximately evenly spaced JHTDB timesteps."""
+    if max_timesteps < 1:
+        raise ValueError("download.max_timesteps must be at least 1")
+    if num_cubes < 1:
+        raise ValueError("download.num_cubes must be at least 1")
+    if num_cubes > max_timesteps:
+        raise ValueError(
+            f"download.num_cubes ({num_cubes}) cannot exceed "
+            f"download.max_timesteps ({max_timesteps})"
+        )
+
+    time_steps = np.linspace(1, max_timesteps, num=num_cubes, dtype=int).tolist()
+    if len(set(time_steps)) != num_cubes:
+        raise RuntimeError("Timestep selection produced duplicates")
+    return time_steps
+
+
 @hydra.main(version_base=None, config_path="configs", config_name="cnn")
 def main(cfg):
     raw_dir = Path(cfg.raw_data_dir)
 
+    token = os.getenv("JHTDB_TOKEN") or cfg.download.jhtdb_token
+    if token is None or not str(token).strip():
+        raise SystemExit(
+            "No JHTDB token configured. Export JHTDB_TOKEN before running "
+            "superresolution.download."
+        )
+
     conn = turb_dataset(
         dataset_title=cfg.download.jhtdb_dataset,
         output_path=cfg.download.jhtdb_cache_dir,
-        auth_token=cfg.download.jhtdb_token,
+        auth_token=str(token),
     )
 
-    step = cfg.download.max_timesteps // cfg.download.num_cubes
-    time_steps = list(range(1, cfg.download.max_timesteps, step))
+    time_steps = select_time_steps(
+        max_timesteps=cfg.download.max_timesteps,
+        num_cubes=cfg.download.num_cubes,
+    )
     print(f"Downloading {len(time_steps)} cubes at time steps: {time_steps}")
 
     download_cubes(

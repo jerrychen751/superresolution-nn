@@ -19,7 +19,7 @@ canonical training path.
 | [`src/superresolution/configs/`](src/superresolution/configs/) | Hydra model and environment configurations. |
 | [`src/superresolution/models/`](src/superresolution/models/) | Model architectures plus their dataset and input/output adapters. |
 | [`scripts/`](scripts/) | Environment setup and Slurm entry points. |
-| [`docs/`](docs/) | Design notes for models and distributed training. |
+| [`docs/`](docs/) | PACE instructions, preprocessing explanation, and model design notes. |
 | [`superresolution_experiments/`](superresolution_experiments/) | Image-filtering, JHTDB, and GNN experiments retained for reference. |
 | [`jerry/`](jerry/) | Individual prototypes and learning notebooks. |
 | [`yash/`](yash/) | Autoencoder/GAN exploration and archived comparison work. |
@@ -33,16 +33,20 @@ For the residual architectures, the model learns a correction term:
 u_corrected = u_coarse_upsampled + model(u_coarse_upsampled)
 ```
 
+See **[CNN preprocessing: DNS velocity to training pairs](docs/CNN_PREPROCESSING.md)** for the complete Gaussian smoothing, downsampling, spline upsampling, and correction-target explanation.
+
 `upsample_cnn` learns a direct coarse → fine mapping instead. `closure_cnn` predicts a subgrid-scale closure at coarse resolution.
 
 ## If you're new
 
-One-time: get your accounts set up, create the uv environment on PACE scratch, clone the repo, and plug your scratch path into three HPC config files. Then for each model, `download` once (ever) and `preprocess` once, then sbatch a training job. When that lands, run inference on PACE or copy `weights.pth` down and run it locally. Sections below walk through each piece.
+For the beginner-friendly upload → prepare → Run All workflow, follow **[PACE notebook quickstart](docs/PACE_NOTEBOOK_QUICKSTART.md)**. It provides one copy-paste preparation command and does not require editing paths or configuration files.
+
+The sections below document the lower-level local, Slurm, and multi-model workflows.
 
 ## Prerequisites
 
 - **Georgia Tech PACE ICE account** — https://docs.pace.gatech.edu/
-- **JHTDB token** — register at http://turbulence.pha.jhu.edu/authtoken.aspx, then set it in `src/superresolution/configs/default.yaml` under `download.jhtdb_token`
+- **JHTDB token** — the team currently uses Jerry's token already configured in `default.yaml`. Members do not need separate tokens. `JHTDB_TOKEN` remains an optional environment override if the shared token is rotated.
 - **GT VPN** when SSHing into PACE from off-campus
 - **[uv](https://docs.astral.sh/uv/)** locally — `curl -LsSf https://astral.sh/uv/install.sh | sh`. It installs its own Python, so no system Python or conda is needed.
 
@@ -88,22 +92,39 @@ Home-filesystem quota is too small for the venv, uv's wheel cache, or the interp
 
 ```bash
 # Artifacts root — $storage_root in env/hpc.yaml
-mkdir -p /storage/ice1/3/9/<YOURUSER>/superresolution
+export SUPERRES_PROJECT_DIR=$HOME/projects/superresolution-nn
+export SUPERRES_STORAGE_ROOT=/storage/ice1/3/9/<YOURUSER>/superresolution
+export SUPERRES_VENV=/storage/ice1/3/9/<YOURUSER>/venvs/superresolution-nn
+mkdir -p "$SUPERRES_STORAGE_ROOT"
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
-cd $HOME/projects/superresolution-nn
-VENV=/storage/ice1/3/9/<YOURUSER>/venvs/superresolution-nn bash scripts/hpc_env_setup.sh
+cd "$SUPERRES_PROJECT_DIR"
+bash scripts/hpc_env_setup.sh
 ```
 
-Point `VENV` outside `$HOME` and `scripts/hpc_env_setup.sh` puts the wheel cache and the interpreter beside it automatically. No `module load anaconda3` is needed: `uv python install` fetches its own CPython.
+Point `SUPERRES_VENV` outside `$HOME` and `scripts/hpc_env_setup.sh` puts the wheel cache and interpreter beside it automatically. It also registers a `Python (superresolution-nn)` Jupyter kernel. No `module load anaconda3` is needed: `uv python install` fetches its own CPython.
 
-### 3. Update HPC-specific paths
+### 3. Export PACE paths in each shell or OnDemand session
 
-PACE doesn't export `$SCRATCH` into Slurm job environments, so we hardcode the scratch path in three files:
+PACE does not reliably export `$SCRATCH` into Slurm or OnDemand sessions. Export these three variables before data jobs, training jobs, or Jupyter:
 
-- `src/superresolution/configs/env/hpc.yaml` — set `storage_root: /storage/ice1/3/9/<YOURUSER>/superresolution`
-- `scripts/hpc_training.sh` — set `VENV=/storage/ice1/3/9/<YOURUSER>/venvs/superresolution-nn`
-- `scripts/hpc_preprocess.sh` — set the same `VENV`
+```bash
+export SUPERRES_PROJECT_DIR=$HOME/projects/superresolution-nn
+export SUPERRES_STORAGE_ROOT=/storage/ice1/3/9/<YOURUSER>/superresolution
+export SUPERRES_VENV=/storage/ice1/3/9/<YOURUSER>/venvs/superresolution-nn
+```
+
+Every user should export these variables for their own PACE account. The shared JHTDB token does not grant access to another member's PACE storage, and the code does not use another member's filesystem as a fallback.
+
+Tony's current PACE checkout and existing environment use these values:
+
+```bash
+export SUPERRES_PROJECT_DIR=/storage/ice1/2/7/ntrimait3/superresolution-nn
+export SUPERRES_STORAGE_ROOT=/storage/ice1/2/7/ntrimait3/superresolution
+export SUPERRES_VENV="$SUPERRES_PROJECT_DIR/\~scratch/venvs/superresolution-nn"
+```
+
+That venv path is unusual but functional. Do not recreate, move, or delete it merely to rename the directory. The batch scripts auto-detect it when they are run from this checkout.
 
 ### 4. (Optional) Symlink scratch artifacts into the code dir
 
@@ -125,9 +146,9 @@ The `data-scratch` and `logs-csv` aliases avoid two directories the repo already
 On PACE, with the venv activated:
 
 ```bash
-cd $HOME/projects/superresolution-nn
+cd "$SUPERRES_PROJECT_DIR"
 
-# Pull raw DNS cubes from JHTDB into $storage_root/data/raw/
+# Pull raw DNS cubes using the configured team token.
 python -m superresolution.download env=hpc
 
 # Preprocess, splitting into train/val/test subdirs per config ratios
@@ -138,23 +159,26 @@ done
 
 Download is slow (network-bound on JHTDB) but only happens once. Preprocess is safe to rerun — each pair already on disk is skipped, so a job killed at wall time resumes where it stopped.
 
-The loop above runs on the login node. To run it as a batch job instead:
+For the full dataset, use a batch job instead of keeping work on the login node. This downloads JHTDB and requests only CNN preprocessing; omitting `MODELS` retains the existing five-model behavior:
 
 ```bash
-cd $HOME/projects/superresolution-nn
-sbatch scripts/hpc_preprocess.sh
+cd "$SUPERRES_PROJECT_DIR"
+mkdir -p logs
+sbatch --export=ALL,DOWNLOAD=1,MODELS=cnn scripts/hpc_preprocess.sh
 ```
 
-The `cd` matters: `#SBATCH --output=logs/%j.out` resolves against the directory you submit from, and Slurm does not create it. Either way, download must have run first, because preprocess exits non-zero when the raw directory is empty.
+The `cd` and `mkdir` matter: Slurm resolves `logs/%j.out` against the submission directory and does not create `logs/`. After the data job succeeds, submit training with `SKIP_DOWNLOAD=1` so GPU time is not spent downloading.
 
 ## Training
+
+For interactive notebook work, request one GPU (the tested A40 is sufficient), about 4 CPU cores, 32–64 GB RAM, and 2–4 hours for a short run. The notebook uses one device, so requesting multiple GPUs does not make it faster. Use Slurm for longer training.
 
 Submit a training job via Slurm, passing the model variant through the `MODEL` env var:
 
 ```bash
-cd $HOME/projects/superresolution-nn
-sbatch --export=MODEL=upsample_cnn scripts/hpc_training.sh
-sbatch --export=MODEL=fno          scripts/hpc_training.sh
+cd "$SUPERRES_PROJECT_DIR"
+sbatch --export=ALL,MODEL=cnn,TRAIN_EPOCHS=100,SKIP_DOWNLOAD=1          scripts/hpc_training.sh
+sbatch --export=ALL,MODEL=upsample_cnn,TRAIN_EPOCHS=100,SKIP_DOWNLOAD=1 scripts/hpc_training.sh
 # ...
 ```
 
@@ -235,7 +259,7 @@ The **code** (git-cloned repo) and the **artifacts** (data, weights, logs) are o
 ├── docs/
 └── CLAUDE.md
 
-/storage/ice1/3/9/jchen3421/superresolution/             ARTIFACTS — scratch filesystem
+/storage/ice1/.../<YOURUSER>/superresolution/            ARTIFACTS — scratch filesystem
 │                                               ↑ this is storage_root on HPC
 ├── data/
 │   ├── raw/                                    raw_data_dir
@@ -296,7 +320,7 @@ Most of these dirs aren't populated locally — full training and preprocessing 
 
 | Config key (from `default.yaml`) | Interpolates to | Example on HPC |
 |---|---|---|
-| `storage_root` | (env-specific) | `/storage/ice1/3/9/jchen3421/superresolution` |
+| `storage_root` | (env-specific) | `/storage/ice1/.../<YOURUSER>/superresolution` |
 | `raw_data_dir` | `${storage_root}/data/raw` | `.../superresolution/data/raw/` |
 | `processed_data_dir` | `${storage_root}/data/processed/${model.name}` | `.../data/processed/cnn/` |
 | `inference_data_dir` | `${processed_data_dir}/test` | `.../data/processed/cnn/test/` |
@@ -344,7 +368,7 @@ python -m superresolution.inference --config-name=upsample_cnn \
   inference_data_dir=/path/to/external_eval
 ```
 
-`num_cubes` in `download.py` is unchanged — you still download the full set of raw cubes; the split happens entirely during preprocessing.
+`download.num_cubes` controls how many approximately evenly spaced raw timesteps are downloaded. The train/validation/test split happens entirely during preprocessing.
 
 ## Contributing
 

@@ -17,7 +17,7 @@ configs/
   gnn.yaml
   env/
     local.yaml       # storage_root for local development
-    hpc.yaml         # storage_root for PACE / HPC (hardcoded scratch path)
+    hpc.yaml         # PACE storage_root; SUPERRES_STORAGE_ROOT can override it
 ```
 
 `default.yaml` holds the download, preprocess, and train blocks that every experiment uses. It also defines the artifact paths (`raw_data_dir`, `processed_data_dir`, `checkpoints_dir`, etc.) as interpolations off a `storage_root` variable — the env config group supplies the concrete value.
@@ -56,7 +56,7 @@ storage_root: ${hydra:runtime.cwd}   # the repo root, so artifacts land beside s
 ```yaml
 # env/hpc.yaml
 # @package _global_
-storage_root: /storage/ice1/3/9/<YOURUSER>/superresolution   # hardcoded; $SCRATCH isn't exported into Slurm jobs
+storage_root: ${oc.env:SUPERRES_STORAGE_ROOT,/legacy/project/path}
 ```
 
 ```yaml

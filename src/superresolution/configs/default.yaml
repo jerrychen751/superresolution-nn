@@ -9,6 +9,7 @@ download:
   nz: 128
   num_cubes: 700
   max_timesteps: 5024
+  # JHTDB_TOKEN overrides this legacy project default in download.py.
   jhtdb_token: edu.gatech.jerrychen-6b7455a7
 
 preprocess:

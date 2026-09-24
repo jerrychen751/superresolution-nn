@@ -5,48 +5,58 @@
 #SBATCH --qos=coe-ice
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:h200:2 # H200, 141GB HBM3e per GPU
-#SBATCH --ntasks-per-node=1 # Stays 1; torchrun spawns child processes equal to number of GPUs (tasks = GPU ct)
+#SBATCH --ntasks-per-node=1 # torchrun spawns one process per GPU
 #SBATCH --cpus-per-task=5 # nproc_per_node * (num_workers + 1)
 #SBATCH --mem=32G
-#SBATCH --time=08:00:00 # 2 gpus * 480 min = 960 gpu-min, coe-ice qos max per job
-#SBATCH --output=logs/%j.out # stdout -> logs/<jobid>.out
-#SBATCH --error=logs/%j.err # stderr -> logs/<jobid>.err
+#SBATCH --time=08:00:00 # coe-ice QoS maximum per job
+#SBATCH --output=logs/%j.out
+#SBATCH --error=logs/%j.err
 
 # Usage:
-#   sbatch --export=MODEL=cnn scripts/hpc_training.sh
-#   sbatch --export=MODEL=closure_cnn scripts/hpc_training.sh
-#   sbatch --export=MODEL=upsample_cnn scripts/hpc_training.sh
+#   sbatch --export=ALL,MODEL=cnn,SKIP_DOWNLOAD=1 scripts/hpc_training.sh
+#   sbatch --export=ALL,MODEL=closure_cnn,SKIP_DOWNLOAD=1 scripts/hpc_training.sh
+#   sbatch --export=ALL,MODEL=upsample_cnn,SKIP_DOWNLOAD=1 scripts/hpc_training.sh
 #
 # MODEL selects which model variant to preprocess and train.
-# preprocess.py reads cfg.model.name directly to pick the matching make_training_pair.
-# Each variant gets its own processed data directory on scratch.
-# Set SKIP_DOWNLOAD=1 to skip the download step (use existing raw data).
+# TRAIN_EPOCHS retains the original 1000-epoch default; override it at submission.
+# Set SKIP_DOWNLOAD=1 when data has already been prepared by hpc_preprocess.sh.
 
 set -euo pipefail
 
-# Validate MODEL is set
 if [ -z "${MODEL:-}" ]; then
-    echo "ERROR: MODEL environment variable not set. Use: sbatch --export=MODEL=<variant> scripts/hpc_training.sh"
+    echo "ERROR: MODEL environment variable not set. Use: sbatch --export=ALL,MODEL=<variant>,SKIP_DOWNLOAD=1 scripts/hpc_training.sh"
     exit 1
 fi
 echo "Model variant: $MODEL"
+TRAIN_EPOCHS="${TRAIN_EPOCHS:-1000}"
+echo "Epochs: $TRAIN_EPOCHS"
 
-# Code lives on NFS home; data/checkpoints/weights/logs live on scratch (configured via env=hpc).
-# Hardcoded PACE scratch path — $SCRATCH isn't exported to Slurm jobs.
-PROJECT_DIR=$HOME/projects/superresolution-nn
-VENV=/storage/ice1/3/9/jchen3421/venvs/superresolution-nn
+# Locate the checkout from this script unless the caller supplies an override.
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_DIR="${SUPERRES_PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}}"
+if [ -z "${SUPERRES_STORAGE_ROOT:-}" ] && [[ "$PROJECT_DIR" == /storage/ice1/* ]]; then
+    export SUPERRES_STORAGE_ROOT="$(dirname "$PROJECT_DIR")/superresolution"
+fi
+if [ -z "${SUPERRES_VENV:-}" ]; then
+    for CANDIDATE in \
+        "$PROJECT_DIR/\~scratch/venvs/superresolution-nn" \
+        "$PROJECT_DIR/~scratch/venvs/superresolution-nn"; do
+        if [ -x "$CANDIDATE/bin/python" ]; then
+            SUPERRES_VENV="$CANDIDATE"
+            break
+        fi
+    done
+fi
+: "${SUPERRES_VENV:?Export SUPERRES_VENV if no project environment is auto-detected}"
 
-# Environment
-export PATH=$VENV/bin:$PATH
+export PATH="$SUPERRES_VENV/bin:$PATH"
 
-# Diagnostics
 echo "Job $SLURM_JOB_ID started at $(date)"
 echo "Running on node: $(hostname)"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
-cd $PROJECT_DIR
+cd "$PROJECT_DIR"
 
-# Step 1: Download velocity cubes from JHTDB (shared across variants)
 if [ "${SKIP_DOWNLOAD:-0}" = "1" ]; then
     echo "=== Step 1: Download (SKIPPED) ==="
 else
@@ -54,28 +64,25 @@ else
     python -m superresolution.download env=hpc
 fi
 
-# Step 2: Preprocess
 echo "=== Step 2: Preprocess (model=$MODEL) ==="
 python -m superresolution.preprocess --config-name=$MODEL env=hpc
 
-# Multi-node rendezvous: pick first allocated node as master
 MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 MASTER_PORT=29500
 export MASTER_ADDR MASTER_PORT
 
-# Step 3: Train model
-# Resolve torchrun's full path before srun, since srun spawns a new process that may not inherit the venv's PATH modifications.
 TORCHRUN=$(which torchrun)
 echo "=== Step 3: Train (model=$MODEL) ==="
-srun $TORCHRUN \
-    --nnodes=$SLURM_NNODES \
-    --nproc_per_node=$SLURM_GPUS_ON_NODE \
-    --rdzv_id=$SLURM_JOB_ID \
+srun "$TORCHRUN" \
+    --nnodes="$SLURM_NNODES" \
+    --nproc_per_node="$SLURM_GPUS_ON_NODE" \
+    --rdzv_id="$SLURM_JOB_ID" \
     --rdzv_backend=c10d \
-    --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
+    --rdzv_endpoint="$MASTER_ADDR:$MASTER_PORT" \
     -m superresolution.train \
-    --config-name=$MODEL \
+    --config-name="$MODEL" \
     env=hpc \
+    train.epochs="$TRAIN_EPOCHS" \
     train.batch_size=1 \
     train.num_workers=2
 

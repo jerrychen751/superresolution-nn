@@ -10,23 +10,44 @@
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 
-# One-shot preprocessing job for all 5 models.
-# preprocess.py's existence check skips any train/val/test pair already on disk, so re-running is idempotent and cheap.
+# PACE data job. It retains the original five-model default. Set DOWNLOAD=1 to
+# download JHTDB first, or set MODELS="cnn" for a CNN-only run.
+# Existing raw cubes and processed pairs are skipped on rerun.
 
 set -euo pipefail
 
-PROJECT_DIR=$HOME/projects/superresolution-nn
-VENV=/storage/ice1/3/9/jchen3421/venvs/superresolution-nn
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_DIR="${SUPERRES_PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}}"
+if [ -z "${SUPERRES_STORAGE_ROOT:-}" ] && [[ "$PROJECT_DIR" == /storage/ice1/* ]]; then
+    export SUPERRES_STORAGE_ROOT="$(dirname "$PROJECT_DIR")/superresolution"
+fi
+if [ -z "${SUPERRES_VENV:-}" ]; then
+    for CANDIDATE in \
+        "$PROJECT_DIR/\~scratch/venvs/superresolution-nn" \
+        "$PROJECT_DIR/~scratch/venvs/superresolution-nn"; do
+        if [ -x "$CANDIDATE/bin/python" ]; then
+            SUPERRES_VENV="$CANDIDATE"
+            break
+        fi
+    done
+fi
+: "${SUPERRES_VENV:?Export SUPERRES_VENV if no project environment is auto-detected}"
 
-export PATH=$VENV/bin:$PATH
+export PATH="$SUPERRES_VENV/bin:$PATH"
 
 echo "Job $SLURM_JOB_ID started at $(date)"
 echo "Running on node: $(hostname)"
 
-cd $PROJECT_DIR
+cd "$PROJECT_DIR"
+
+if [ "${DOWNLOAD:-0}" = "1" ]; then
+    echo "=== Download JHTDB start: $(date +%H:%M:%S) ==="
+    python -m superresolution.download env=hpc
+    echo "=== Download JHTDB end:   $(date +%H:%M:%S) ==="
+fi
 
 FAILED=""
-for MODEL in cnn upsample_cnn closure_cnn fno gnn; do
+for MODEL in ${MODELS:-cnn upsample_cnn closure_cnn fno gnn}; do
     echo "=== Preprocess $MODEL start: $(date +%H:%M:%S) ==="
     if python -m superresolution.preprocess --config-name=$MODEL env=hpc; then
         echo "=== Preprocess $MODEL end:   $(date +%H:%M:%S) ==="
