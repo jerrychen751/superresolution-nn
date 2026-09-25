@@ -129,6 +129,10 @@ The important files are:
 - `history.json`: training and validation loss
 - `test_metrics.json`: baseline and CNN MSE/MAE
 - `experiment.json`: settings used for the run
+- `loss_curve.png`: training and validation loss graph
+- `flow_comparison_u.png`: input, CNN reconstruction, and DNS truth for velocity `u`
+- `flow_comparison_v.png`: the same comparison for velocity `v`
+- `flow_comparison_w.png`: the same comparison for velocity `w`
 
 Closing the browser or losing the VPN does not normally stop a healthy Jupyter
 kernel while its PACE interactive session is still running. However, do not
