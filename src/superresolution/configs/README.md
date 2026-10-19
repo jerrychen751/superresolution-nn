@@ -11,6 +11,7 @@ uv add hydra-core==1.3.2 omegaconf==2.3.0
 configs/
   default.yaml       # shared baseline for every experiment
   cnn.yaml           # each model file extends default and sets its model block
+  cnn_16.yaml        # cnn preprocessing with stride 8: 128^3 -> 16^3 -> 128^3
   closure_cnn.yaml
   upsample_cnn.yaml
   fno.yaml
@@ -80,6 +81,7 @@ Each entry-point script uses `@hydra.main` with `config_name="cnn"` as the defau
 python -m superresolution.train                           # cnn (default)
 python -m superresolution.train --config-name=gnn         # gnn
 python -m superresolution.preprocess --config-name=fno    # fno
+python -m superresolution.preprocess --config-name=cnn_16 # harder CNN pairs
 ```
 
 Override individual fields with standard Hydra syntax:

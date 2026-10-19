@@ -30,7 +30,7 @@ Connect to the GT VPN, open PACE Open OnDemand, and launch **Jupyter** with:
 | Cores Per Node | 8 |
 | GPUs Per Node | 1 |
 | Memory Per Core | 8 GB |
-| Hours | 6 |
+| Hours | 8 |
 
 Both interfaces run the same notebook on the same compute node. JupyterLab is
 recommended because its file browser and terminal are easier to use. The
@@ -114,6 +114,43 @@ Full team split verified: {'train': 490, 'val': 105, 'test': 105}
 ```
 
 If it says `Device: cpu`, stop and select the correct kernel.
+
+## Harder 128 to 16 experiment
+
+The standard dataset filters each 128 x 128 x 128 cube, keeps every fourth
+point to make a 32 x 32 x 32 coarse cube, and spline-upsamples it back to 128
+for the CNN. The harder dataset keeps every eighth point, making a 16 x 16 x
+16 coarse cube before the same upsampling step.
+
+Finish the standard preparation in section 4 first. The raw 700 JHTDB cubes
+and Python environment are reused. After uploading this version of the
+repository, run:
+
+```bash
+cd ~/scratch/superresolution-nn
+bash scripts/pace_prepare_cnn_16.sh
+```
+
+Wait for all three split counts to be verified. The new pairs are stored
+separately at:
+
+```text
+~/scratch/superresolution/data/processed/cnn_16/
+```
+
+Then run one of these notebooks:
+
+- `cnn_training_16_template.ipynb`: shared member template
+- `cnn_training_16_tony.ipynb`: Tony's copy
+
+The original `data/processed/cnn/` directory and 128 to 32 notebooks are not
+changed. The 128 to 16 pairs need roughly another 33 GiB because the saved CNN
+input and correction target are both upsampled back to 128 x 128 x 128.
+
+For a controlled comparison, keep the Gaussian sigma, spline order, data
+split, model architecture, optimizer, and training settings identical to the
+128 to 32 run. Change only the downsampling step and use a new
+`EXPERIMENT_NAME`.
 
 ## 6. Find the results
 

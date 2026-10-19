@@ -1,0 +1,13 @@
+defaults:
+  - cnn
+  - _self_
+
+# Harder version of the standard CNN dataset:
+# 128^3 DNS -> Gaussian filter -> stride 8 -> 16^3 -> spline upsample to 128^3.
+# Keep model.name as cnn so preprocess.py uses the same make_training_pair logic.
+preprocess:
+  downsample_step: 8
+
+# Keep these pairs separate from the standard stride-4 (32^3) dataset.
+processed_data_dir: ${storage_root}/data/processed/cnn_16
+
