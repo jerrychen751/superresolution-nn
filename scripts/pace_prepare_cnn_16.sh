@@ -24,8 +24,12 @@ export SUPERRES_VENV="${SUPERRES_VENV:-$SCRATCH_ROOT/venvs/superresolution-nn}"
 
 PYTHON="$SUPERRES_VENV/bin/python"
 if [ ! -x "$PYTHON" ]; then
-    echo "ERROR: The project environment was not found at $SUPERRES_VENV"
-    echo "Run bash scripts/pace_prepare_notebook.sh first."
+    echo "Project environment not found at $SUPERRES_VENV"
+    echo "Creating it now..."
+    bash "$PROJECT_DIR/scripts/hpc_env_setup.sh"
+fi
+if [ ! -x "$PYTHON" ]; then
+    echo "ERROR: Python was not created at $PYTHON"
     exit 1
 fi
 
